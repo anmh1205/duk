@@ -1,26 +1,39 @@
-# duk-core — Python modeling and control
+# DUK Robotics Core
 
-Core là Python package dùng cho mô hình toán học, tính toán điều khiển và biểu diễn dữ liệu DUK. Các phép tính trong `modeling/` và `control/` không bắt buộc ROS hoặc các thư viện đồ họa.
+`duk-core` provides the ROS-independent numerical foundation for developing and evaluating DUK models and control methods. The package uses a conventional Python `src/` layout, with tests, executable examples and notebooks that access the same public APIs.
 
-## Cài đặt
+## Package boundaries
+
+| Location | Responsibility |
+| --- | --- |
+| `src/duk_core/modeling/` | Kinematics, dynamics, contact constraints, trajectories and state definitions |
+| `src/duk_core/control/` | Control design, optimization and numerical controller operations |
+| `src/duk_core/visualization/` | Optional plotting, geometry and animation utilities |
+| `notebooks/` | Interactive numerical exploration and motion visualization |
+| `examples/` | Concise examples of public package APIs |
+| `tests/` | Reproducible unit and numerical regression tests |
+
+The modeling and control modules must not require ROS, middleware messages, hardware drivers or graphical dependencies. Visualization dependencies may be installed when needed for notebook work.
+
+## Setup and verification
+
+From the repository root:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e "./robot/software/core[test,research]"
 python -m pytest robot/software/core/tests
-python robot/software/core/examples/planar_chain.py
 ```
 
-`research` cài các công cụ phục vụ notebook và hiển thị; runtime không phải cài những thư viện này khi không cần.
+Run JupyterLab from the configured Python environment to work with notebooks under `notebooks/`. `examples/` provides smaller executable usage references.
 
-## Ví dụ ban đầu
+## Data and model contracts
 
-`duk_core.modeling.planar.forward_chain` tính tọa độ các điểm của **chuỗi khớp quay phẳng tổng quát**, với góc tương đối và chiều dài từng đoạn. `duk_core.visualization.planar.draw_chain` biểu diễn các điểm đó bằng Matplotlib. Đây chỉ là ví dụ API và thử nghiệm hình học, **không phải mô hình động học của DUK**; các công thức DUK thực tế phải được xây dựng từ thiết kế cơ khí và mô hình đã xác minh.
+All algorithm APIs must specify units, coordinate frames, parameter ordering and validity ranges. Physical robot values come from reviewed input configurations, not hard-coded locations within the source package. Any derivation, linearization or reduced-order approximation should document its assumptions and verification method.
 
-Notebook tại `notebooks/kinematics/planar-chain.ipynb` minh họa luồng tính toán → giá trị → hình vẽ. Các module `control/` và nhiều nhóm notebook khác hiện mới là khung mở rộng.
+The existing generic planar-chain helper illustrates the package interface and drawing workflow; its geometry is not a validated model of DUK. Robot-specific kinematics and dynamics require source mechanical geometry, reference configurations and numerical tests before being treated as authoritative.
 
-## Quy tắc
+## Relationship to the wider repository
 
-- Mọi phép tính được dùng lại phải nằm trong `src/duk_core/`, không chỉ trong notebook.
-- Không hardcode đường dẫn tới `robot/config/` trong thư viện; cấu hình được cấp qua API hoặc adapter.
-- Dữ liệu và hình được tạo từ notebook lưu dưới `data/` (bị ignore) khi cần, không commit output lớn.
-- Bổ sung test đối với chức năng toán học trước khi coi nó là triển khai chính thức.
+ROS integrations consume `duk_core` instead of embedding a duplicate model. Research experiments import the same source implementations and record the code/configuration revision for reproducibility. See [Core architecture](../../../docs/software/core.md), [Data contracts](../../../docs/architecture/data-contracts.md) and [Testing](../../../docs/development/testing.md).

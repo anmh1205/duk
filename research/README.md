@@ -1,15 +1,21 @@
-# Research
+# DUK Research
 
-`research/` contains repeatable experiments, shared benchmarks and publications.
+The research area owns scientific experiment definitions, comparative benchmarks and publication materials. It is distinct from the interactive engineering notebooks and reusable algorithms maintained under the robotics core.
 
-- `experiments/`: a scientific question, input configuration, execution and analysis.
-- `benchmarks/`: common conditions and metrics to compare multiple approaches.
-- `publications/`: manuscripts and exported scientific materials.
+## Studies and benchmarks
 
-Interactive learning and fast algorithm inspection are located in
-[core notebooks](../robot/software/core/notebooks/) so that reusable mathematical
-logic remains adjacent to its implementation.
+`experiments/` defines reproducible studies with documented objectives, configuration, initial conditions, measurements and analysis procedures. `benchmarks/` defines shared evaluation conditions that can be reused to compare models and controllers. `publications/` contains thesis/manuscript material and supporting scientific artifacts.
 
-For each experiment, record the source commit, physical/controller parameters,
-initial conditions, seed where applicable, software environment and observed
-metrics. Large outputs live under `data/` or a separately managed data store.
+A study should use the canonical `duk_core` API and established robot parameters, rather than maintaining a parallel implementation of kinematics, dynamics or control. Experimental scripts can orchestrate simulations or measurements without becoming the owner of the scientific model.
+
+## Reproducibility
+
+Each experiment needs a precise source revision, model/hardware configuration, software environment, scenario, random seed where applicable, analysis version and recorded metrics. Distinguish simulation-only conclusions from results demonstrated on physical hardware.
+
+Store large recordings and generated result files under ignored local data directories or a managed external artifact store; commit only the configuration and analysis material needed for reproduction.
+
+## Publication quality
+
+Reported results must have traceable source data, clear units, declared uncertainty and fair baselines. Reusable charts and numerical drawing functions remain in core visualization; scientific figures may be generated from recorded experiment data.
+
+See [Research methodology](../docs/research/methodology.md) and [Experiment protocol](../docs/experiments/README.md).

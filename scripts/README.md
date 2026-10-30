@@ -1,9 +1,9 @@
-# scripts
+# Development Scripts
 
-Nơi chứa **script lẻ** để thao tác nhanh, kiểm tra tạm hoặc hỗ trợ quá trình
-phát triển. Không tổ chức lại thư mục này thành một hệ thống CI/CD thứ hai.
+`scripts/` contains short, local helpers used during engineering work: one-off inspections, temporary conversions, quick instrumentation and other ad hoc developer tasks. It is not a second automation framework.
 
-- CI/CD chính thức thuộc `.github/workflows/`.
-- Công cụ có logic dùng lại, giao diện rõ ràng và kiểm thử thuộc `tools/`.
-- Khi một script nhỏ phát triển thành chức năng được duy trì, chuyển nó đến
-  nơi sở hữu phù hợp thay vì để nhiều bản sao.
+A script may be committed when it is useful for reproducing a small engineering operation and has no hidden credentials or environment-specific assumptions. Keep its invocation and required dependencies understandable.
+
+Move maintained, reusable engineering programs into `tools/`, with a documented interface and appropriate tests. Official CI and release automation belong in `.github/workflows/`; CI must not silently depend on temporary developer scripts.
+
+For repository-wide placement rules, see [Repository layout](../docs/architecture/repository-layout.md).

@@ -1,13 +1,34 @@
-# Trạng thái hỗ trợ nền tảng
+# Platform Compatibility
 
-Danh sách khai báo ở
-[compatibility.yaml](../../environment/platforms/compatibility.yaml).
+Platform compatibility in DUK is a verified property of a specific combination of hardware, operating system, middleware and dependency versions. It is not inferred from a Dockerfile, a successful Python unit test or an upstream package's nominal architecture list.
 
-- `unverified`: đã quy hoạch, chưa kiểm thử trên mục tiêu.
-- `unconfigured`: chưa chọn ROS/JetPack hoặc chưa có image runtime thích hợp.
-- Chỉ ghi `verified` sau khi có kết quả build/run trên đúng tổ hợp ROS,
-  Ubuntu image, CPU architecture và các driver cần thiết.
+The source declaration is [environment/platforms/compatibility.yaml](../../environment/platforms/compatibility.yaml). Keep its entries synchronized with actual build and runtime evidence.
 
-Image ROS có thể hỗ trợ amd64/arm64 nhưng không tự bảo đảm CUDA/JetPack,
-Gazebo GUI, USB/CAN hoặc time-critical scheduling hoạt động trên Jetson.
-Không dùng lại cache nhị phân giữa các ROS distro hoặc kiến trúc khác nhau.
+## Compatibility dimensions
+
+| Dimension | Items to record |
+| --- | --- |
+| Host | OS release, kernel characteristics, CPU architecture and Docker/Compose versions |
+| ROS | Distribution, underlying image and package/ABI versions |
+| Python | Interpreter, numerical package versions, binary-extension compatibility |
+| Simulation | Gazebo version, physics engine, graphical driver and GPU capability |
+| Embedded target | Board model, operating system, JetPack/L4T or equivalent BSP |
+| Peripherals | USB, CAN, camera, IMU and motor transport/driver behavior |
+| Timing | Control frequency, worst-case loop latency, jitter and deadline misses |
+
+## Status model
+
+- `unconfigured`: a target has no defined toolchain/image and validation procedure.
+- `unverified`: intended configuration exists, but qualifying build/runtime evidence is missing.
+- `verified`: the exact target combination passed documented tests relevant to the claimed capability.
+- `unsupported`: explicitly excluded from the support policy, with the constraint recorded.
+
+A verified Python calculation does not verify a ROS controller, graphics stack, CAN interface or Jetson accelerator. Validation should be scoped to each claimed capability.
+
+## Development and deployment
+
+The generic development container uses ROS 2 tooling without privileged hardware access. Architecture-specific compiled modules, ROS workspaces and Python binary extensions must be rebuilt for compatible targets. Jetson GPU access and drivers depend on the installed JetPack/L4T environment and are not portable by changing only the Docker base image.
+
+## Evidence management
+
+For every verified combination, retain the source commit, configuration, CI/build link or captured test report, executed commands, affected capabilities and known limitations. Update the source matrix and this guide when a platform's supported scope changes.

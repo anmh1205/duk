@@ -1,15 +1,19 @@
-## Thay đổi
+## Summary
 
-Mô tả phạm vi và hành vi thay đổi.
+Describe the change and its intended engineering outcome.
 
-## Ảnh hưởng
+## Scope and affected subsystems
 
-Nêu module, thông số robot, giao diện hoặc dependency liên quan.
+Identify relevant hardware revisions, ROS packages, core APIs, simulator models, interfaces and configuration sets.
 
-## Kiểm thử
+## Validation
 
-Ghi rõ lệnh đã chạy và kết quả thực tế; nêu cả phần chưa được kiểm chứng.
+Provide exact commands or review procedures and their results. Distinguish automated checks, simulation evidence and physical-hardware verification.
 
-## Tài liệu và an toàn
+## Compatibility and safety
 
-Nêu tài liệu đã cập nhật và ảnh hưởng đến phần cứng (nếu có).
+Document breaking changes, supported platforms, deployment impact, physical-actuation risk and mitigation or rollback provisions.
+
+## Documentation and traceability
+
+Link updated technical documentation, parameter records, issue references or architecture decisions.

@@ -1,62 +1,107 @@
 # DUK — Wheel-Legged Biped Robot
 
-DUK là monorepo cho thiết kế, nghiên cứu và phát triển robot hai chân có bánh xe (wheel-legged biped robot). Repository quản lý đồng bộ phần cứng, phần mềm, mô hình toán học, mô phỏng, thí nghiệm và các ứng dụng liên quan.
+DUK is a monorepo for the design, development, research, and integration of a wheel-legged bipedal robot. It unifies the robot's mechanical and electronic design, mathematical models, control software, simulation, scientific evaluation, and supporting applications under a single engineering source tree.
 
-**Trạng thái:** khung kiến trúc đã khởi tạo. Các ROS package, firmware, dashboard và cấu hình Jetson chưa có mã chạy thực tế. Ví dụ động học phẳng trong core chỉ minh họa API và quy trình thử nghiệm; **không phải mô hình đã kiểm chứng của DUK**.
+The repository is organized around **engineering ownership**. Robot-specific design and software live under `robot/`; scientific studies live under `research/`; operational applications, development environments, tooling, and documentation have separate responsibilities. The directory layout describes the architecture and does not, by itself, assert that a subsystem has been implemented or validated.
 
-## Bắt đầu
+## Architecture at a glance
 
-### Python core (không cần ROS)
+| Area | Purpose | Primary entry |
+| --- | --- | --- |
+| Mechanical engineering | Assemblies, parts, drawings, manufacturing deliverables | [Mechanical design](docs/hardware/mechanical.md) |
+| Electronics | PCB projects, power distribution, wiring and shared component libraries | [Electronics design](docs/hardware/electronics.md) |
+| Robotics core | Reusable numerical modeling, control algorithms, plotting and interactive experiments | [Core architecture](docs/software/core.md) |
+| ROS 2 integration | Interfaces, state estimation, hardware abstraction, simulation integration and bringup | [ROS 2 architecture](docs/software/ros2.md) |
+| Embedded software | Firmware and hardware-specific communication | [Firmware architecture](docs/software/firmware.md) |
+| Simulation | Worlds, scenarios and model-consistency validation | [Simulation](docs/simulation/README.md) |
+| Research | Reproducible experiments, benchmarks and publications | [Research methodology](docs/research/methodology.md) |
+| Applications | Operator interfaces, gateway and mobile clients | [Application architecture](docs/applications/README.md) |
+| Environments | Development containers, ROS dependencies, platform variants | [Development environment](docs/development/environment.md) |
+| Project governance | Engineering practices, review, testing and architectural decisions | [Contributing](CONTRIBUTING.md) |
 
-Yêu cầu Python 3.10 trở lên:
+## Repository layout
+
+```text
+duk/
+├── .devcontainer/                  # IDE development-container integration
+├── .github/                        # GitHub Actions and collaboration templates
+├── robot/
+│   ├── hardware/
+│   │   ├── mechanical/             # Editable CAD, drawings and manufacturing
+│   │   └── electronics/            # PCB projects, power, wiring and libraries
+│   ├── software/
+│   │   ├── core/                   # ROS-independent robotics Python package
+│   │   ├── ros2_ws/                # ROS 2 packages and integration adapters
+│   │   └── firmware/               # Embedded targets
+│   ├── simulation/                 # Simulation environments and scenarios
+│   └── config/                     # Physical, controller and calibration data
+├── research/                       # Experiments, benchmarks and publications
+├── applications/                   # Operator dashboard, gateway and mobile
+├── environment/                    # Docker, dependency and platform definitions
+├── scripts/                        # Ad hoc local development scripts
+├── tools/                          # Maintained, reusable engineering utilities
+├── tests/                          # Cross-component and system-level tests
+├── data/                           # Local recordings, results and generated files
+├── docs/                           # Architecture and engineering documentation
+├── AGENTS.md                       # Repository-wide agent development contract
+├── CONTRIBUTING.md                 # Contribution and review process
+└── compose.yaml                    # Development-container entry point
+```
+
+See [Repository layout](docs/architecture/repository-layout.md) for the complete directory contract, placement rules, and ownership boundaries.
+
+## Development
+
+### Python robotics core
+
+The core is a standalone Python package, independent of ROS. Set up a virtual environment, install the package and run its package checks:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e "./robot/software/core[test,research]"
 python -m pytest robot/software/core/tests
-python robot/software/core/examples/planar_chain.py
 ```
 
-Mở notebook tại `robot/software/core/notebooks/kinematics/` bằng JupyterLab hoặc IDE hỗ trợ Jupyter. Notebook sử dụng cùng API `duk_core` với kiểm thử và ví dụ.
+Interactive studies belong in `robot/software/core/notebooks/`; reusable calculations belong in `src/duk_core/`. Notebook-only implementations must not become a parallel mathematical source of truth.
 
-### ROS 2 trong Docker
+### ROS 2 workspace
 
-Yêu cầu Docker Engine, Docker Compose và IDE có hỗ trợ Dev Containers.
+ROS 2 integrations live under `robot/software/ros2_ws/src/`. Build the workspace from a configured ROS environment after actual ROS package manifests have been added:
 
-1. Sao chép `.env.example` thành `.env`, chọn bản ROS theo cấu hình hỗ trợ.
-2. Mở repository trong IDE, chọn **Reopen in Container**.
-3. Terminal bên trong container sử dụng lệnh `ros2`, `colcon` và Python bình thường.
+```bash
+cd robot/software/ros2_ws
+colcon build --symlink-install
+```
 
-Có thể dùng `docker compose up -d dev` để chạy service phát triển mà không qua IDE, sau đó truy cập bằng `docker compose exec dev bash`. Đây là cách vận hành thay thế; quy trình chính vẫn là mở Dev Container. Các ROS package đang là placeholder nên chưa có launch file của DUK.
+The source tree intentionally retains placeholder directories for subsystem boundaries. A placeholder is not a launchable ROS package.
 
-Hướng dẫn và giới hạn thực tế: [Môi trường phát triển](docs/development/environment.md), [Nền tảng được quy hoạch](docs/platforms/compatibility.md).
+### Container-based workflow
 
-## Cấu trúc
+The root `compose.yaml` and `.devcontainer/` provide one entry point for an isolated development environment. Select the ROS distribution through `.env` and open the repository using a Dev Container-capable IDE, or use:
 
-| Thư mục | Trách nhiệm |
-| --- | --- |
-| `robot/hardware/` | CAD gốc, bản vẽ cơ khí, PCB, hệ thống điện và bản chế tạo |
-| `robot/software/core/` | Thư viện toán học Python, công cụ biểu diễn, notebook và unit test |
-| `robot/software/ros2_ws/` | Tích hợp ROS 2; các package chưa triển khai |
-| `robot/software/firmware/` | Firmware thiết bị nhúng |
-| `robot/simulation/` | World và kịch bản mô phỏng DUK |
-| `robot/config/` | Cấu hình vật lý, bộ điều khiển và hiệu chuẩn |
-| `research/` | Thí nghiệm, benchmark và công bố khoa học |
-| `applications/` | Dashboard vận hành, gateway và mobile |
-| `environment/` | Docker, Compose, ma trận nền tảng và dependency |
-| `tools/` | Công cụ kỹ thuật có thể tái sử dụng |
-| `scripts/` | Script lẻ phục vụ quá trình dev, không sở hữu CI/CD |
-| `docs/` | Tài liệu chính thức |
-| `tests/` | Kiểm thử tích hợp, tương thích và hệ thống |
-| `data/` | Dữ liệu phát sinh local, không commit mặc định |
+```bash
+cp .env.example .env
+docker compose up -d dev
+docker compose exec dev bash
+```
 
-## Tài liệu và đóng góp
+Host-specific GPU, graphics, real-time and peripheral access is intentionally not implied by the generic development environment. Consult the [platform matrix](docs/platforms/compatibility.md) before enabling a hardware target.
 
-- [Mục lục tài liệu](docs/README.md)
-- [Cấu trúc và ranh giới repository](docs/architecture/repository-layout.md)
-- [Quy tắc phát triển](docs/development/engineering-rules.md)
-- [Hướng dẫn kiểm thử](docs/development/testing.md)
-- [Hướng dẫn agent](AGENTS.md)
+## Engineering contracts
 
-Giấy phép: [MIT](LICENSE).
+- Maintain a single documented source of truth for physical parameters, coordinate frames, units and robot configuration.
+- Keep core modeling and control APIs independent of ROS middleware; ROS packages adapt those APIs to messages, device interfaces and lifecycle management.
+- Preserve editable hardware source projects. URDF/Xacro, meshes and manufacturing exports are distinct downstream artifacts.
+- Keep exploratory notebooks separate from reproducible scientific experiment definitions.
+- Keep CI/CD in `.github/workflows/`, reusable utilities in `tools/`, and ad hoc helpers in `scripts/`.
+- Track large recordings, logs and generated artifacts outside ordinary Git history.
+- Require appropriate hardware safety reviews before executing actuator commands or deploying firmware.
+
+## Documentation and collaboration
+
+Start at the [documentation index](docs/README.md). Follow [engineering rules](docs/development/engineering-rules.md), [testing practices](docs/development/testing.md), [data contracts](docs/architecture/data-contracts.md) and [contribution guidelines](CONTRIBUTING.md). Agent-assisted work is governed by [AGENTS.md](AGENTS.md).
+
+## License
+
+The repository is distributed under the [MIT License](LICENSE), subject to any additional license terms declared for third-party dependencies and externally sourced hardware assets.

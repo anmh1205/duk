@@ -1,9 +1,7 @@
-# Research-specific guidance
+# Research Agent Rules
 
-Read root [AGENTS.md](../AGENTS.md). Scientific experiments must identify
-the model revision, robot parameters, initial conditions, seeds (where applicable),
-metrics and data provenance. The canonical algorithms remain in
-`robot/software/core/src/duk_core/`; research scripts import them.
+Read [repository agent instructions](../AGENTS.md), the [research overview](README.md) and the [research methodology](../docs/research/methodology.md) before modifying studies or benchmarks.
 
-Do not commit raw rosbag, videos or large experiment output into Git.
-Do not claim simulation results demonstrate safety on the physical robot.
+Use the existing robotics-core APIs for mathematics and controller design. An experiment must document its hypothesis, measurement scheme, parameter set, relevant robot/model revision, random seed where applicable, evaluation metrics and processing scripts. Preserve original measurements and explain excluded trials.
+
+Do not fabricate test data, claimed statistical significance, external citations or physical validation results. Distinguish mathematical, simulated, bench and robot measurements. Keep bulky output outside ordinary Git history and identify its associated source commit and configuration.
