@@ -1,13 +1,8 @@
-# Research and Scientific Evidence
+# Research
 
-DUK research builds on the canonical robot model and software to investigate design choices, stability, locomotion, control and system performance. Research artifacts must remain reproducible and traceable to model, hardware and software revisions.
+Documentation locations for methods and comparable research results.
 
-## Research areas
+- [Methodology](methodology.md) — study conventions
+- [Benchmarking](benchmarking.md) — shared evaluation practices
 
-- `research/experiments/`: experimental configurations and executable protocols;
-- `research/benchmarks/`: shared scenarios, baselines and comparable metrics;
-- `research/publications/`: theses, manuscripts, supporting figures and references.
-
-Exploratory model and controller notebooks live beside the reusable core in `robot/software/core/notebooks/`. Scientific research code imports those APIs instead of maintaining parallel dynamics or control implementations.
-
-Follow the [research methodology](methodology.md) and [experiment protocol](../experiments/README.md) when publishing quantitative results.
+Pages marked **Reserved** identify future documentation scope only. They do not approve technical decisions.

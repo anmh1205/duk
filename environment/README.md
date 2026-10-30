@@ -1,17 +1,14 @@
-# Development and Deployment Environments
+# Environments
 
-Environment assets isolate software toolchains from the developer's host machine and organize supported build/runtime targets. They do not replace the source architecture or guarantee that every device can be accessed from a generic container.
+`environment/` groups environment definitions and target-specific development assets.
 
-## Configuration ownership
+| Directory | Scope |
+| --- | --- |
+| `docker/` | Container image definitions |
+| `compose/` | Compose extensions |
+| `platforms/` | Platform declarations |
+| `dependencies/` | Environment-level dependencies |
 
-The root `compose.yaml` is the main development entry point. `.devcontainer/` configures IDE attachment. `docker/` contains container image definitions by purpose; `compose/` contains optional service and target-specific extensions; `dependencies/` owns future environment-level dependency definitions; `platforms/` records target verification status.
+The root [Compose file](../compose.yaml) and [Dev Container configuration](../.devcontainer/devcontainer.json) are the current configuration sources. Their presence does not establish compatibility with every host or robot platform.
 
-## Supported workflows
-
-The ROS 2 development environment offers standard terminal tools and a workspace bind mount. Python core work can run directly in an ordinary Python virtual environment or in the development container. Mechanical CAD and PCB tools may remain native desktop applications and are still part of the monorepo's engineering workflow.
-
-## Portability limits
-
-Changing ROS distributions, CPU architecture or board support packages may require rebuilding images, Python extensions and native workspace artifacts. GPU/graphics forwarding, CAN/USB access, real-time scheduling and Jetson-specific libraries must be verified on their intended targets before being treated as supported.
-
-See [Development environment](../docs/development/environment.md) and [Platform compatibility](../docs/platforms/compatibility.md).
+[Environment documentation](../docs/development/environment.md) · [Platform documentation](../docs/platforms/README.md).

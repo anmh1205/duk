@@ -1,9 +1,7 @@
-# Compose Configuration
+# Compose Extensions
 
-The repository-root `compose.yaml` is the canonical entry point for development services. Compose extensions in this directory should be introduced only when a concrete simulation, application or target-specific workflow requires them.
+This directory is reserved for Compose extensions when a concrete workflow requires them. The current entry point is [compose.yaml](../../compose.yaml).
 
-Each extension must declare its purpose, host requirements, service dependencies, network assumptions, storage behavior and device privileges. Prefer explicit opt-in for hardware-facing services and preserve compatibility with the standard Dev Container workflow.
+No additional service or deployment architecture is specified by this directory.
 
-Avoid duplicating entire service definitions across ROS distribution variants when a clear shared base and controlled override can express the differences. Verify the merged Compose configuration and executed runtime behavior for every supported target.
-
-See [Development environment](../../docs/development/environment.md) and [Platform compatibility](../../docs/platforms/compatibility.md).
+[Environment README](../README.md).

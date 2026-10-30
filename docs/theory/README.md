@@ -1,9 +1,8 @@
-# Mathematical Modeling and Control Theory
+# Mathematical Theory
 
-Theory documentation defines the assumptions, coordinates, symbols and derivations that justify DUK's computational models. Reusable numerical implementations belong in `robot/software/core/src/duk_core/`, not in duplicated equations embedded only in notebooks.
+The future location for mathematical models and control derivations.
 
-For each model, document generalized coordinates, frames, physical parameters, dynamics/contact assumptions, reduction steps, applicable operating envelope and verification method. Distinguish symbolic derivation, numerical approximation, linearization and measured/system-identified quantities.
+- [Modeling](modeling.md) — model equations and assumptions
+- [Control theory](control.md) — control methods and analysis
 
-Control derivations should specify continuous/discrete time, sampling period, state/reference definitions, actuator limits, stability assumptions and validity range. Cite foundational literature or applicable source material for nontrivial models.
-
-Models not yet derived or verified should not be presented as validated DUK dynamics. See [Core architecture](../software/core.md) and [Data contracts](../architecture/data-contracts.md).
+Pages marked **Reserved** identify future documentation scope only. They do not approve technical decisions.

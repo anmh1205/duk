@@ -1,13 +1,9 @@
-# Robot Engineering Agent Rules
+# Robot Agent Instructions
 
-Read [repository instructions](../AGENTS.md), [robot overview](README.md) and the relevant hardware, software or simulation document before modifying any robot-owned asset.
+Read [root AGENTS.md](../AGENTS.md) and [Robot README](README.md).
 
-Preserve discipline boundaries:
+Use the established hardware, software, simulation and configuration directories. Do not invent robot geometry, inertias, sensor or actuator specifications, interface formats or controller parameters. Do not describe an empty package directory as an implemented ROS package.
 
-- Source CAD and PCB design files belong in `hardware/`. Keep URDF/Xacro and runtime meshes in the ROS description package.
-- Canonical modeling/control code belongs in `software/core/`. ROS packages consume its API and own only integration behavior.
-- Physical parameters require units, frames, source revision and calibration provenance. Never invent real DUK dimensions, inertias, pinouts or gains.
-- Model and actuator interfaces must retain defined state ordering, constraints and failure semantics.
-- Empty ROS package directories are placement reservations, not valid executable packages.
+Changes affecting real hardware require explicit authorization.
 
-Do not send physical actuator commands, flash firmware, connect a robot to an unsafe controller or bypass a hardware limit without specific authorization and an approved test procedure. Update affected integration tests and technical documentation with every interface change.
+[Repository layout](../docs/architecture/repository-layout.md).
