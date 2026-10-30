@@ -1,0 +1,24 @@
+name: duk-${ROS_DISTRO:-jazzy}
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: environment/docker/ros/Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - ros-build:/workspace/robot/software/ros2_ws/build
+      - ros-install:/workspace/robot/software/ros2_ws/install
+      - ros-log:/workspace/robot/software/ros2_ws/log
+    stdin_open: true
+    tty: true
+    init: true
+    command: ["sleep", "infinity"]
+
+volumes:
+  ros-build:
+  ros-install:
+  ros-log:

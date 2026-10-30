@@ -1,0 +1,34 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+*.local
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+.ipynb_checkpoints/
+# ROS
+robot/software/ros2_ws/build/
+robot/software/ros2_ws/install/
+robot/software/ros2_ws/log/
+# IDE, OS and caches
+.vscode/
+.idea/
+.DS_Store
+# Experiment-generated data: keep skeleton directories
+/data/**
+!/data/**/
+!/data/**/.gitkeep
+# Logs / recordings / temporary output
+*.mcap
+*.db3
+*.bag
+*.log

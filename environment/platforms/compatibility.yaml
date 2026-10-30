@@ -1,0 +1,13 @@
+schema_version: 1
+# Status is a declaration of verification state, not a compatibility guarantee.
+targets:
+  desktop-amd64:
+    ros_distro: jazzy
+    status: unverified
+  desktop-arm64:
+    ros_distro: jazzy
+    status: unverified
+  jetson-arm64:
+    ros_distro: null
+    jetpack: null
+    status: unconfigured
