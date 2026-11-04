@@ -126,10 +126,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       ROS_DISTRO: jazzy
-      # Temporary CI-only workaround for docker/compose#14285 with
-      # Buildx >= 0.37.2. Remove after the GitHub runner ships a Compose
-      # release containing the upstream Dockerfile fs.read entitlement fix.
-      BUILDX_BAKE_ENTITLEMENTS_FS: "0"
 
     steps:
       - name: Checkout
@@ -147,6 +143,38 @@ jobs:
           docker version
           docker compose version
           docker buildx version
+
+      - name: Apply Buildx workaround only for affected Compose versions
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+
+          raw = subprocess.check_output(
+              ["docker", "compose", "version", "--short"],
+              text=True,
+          ).strip()
+          match = re.search(r"(\d+)\.(\d+)\.(\d+)", raw)
+          if match is None:
+              raise SystemExit(f"cannot parse Docker Compose version: {raw!r}")
+
+          version = tuple(int(part) for part in match.groups())
+          fixed = (5, 7, 0)
+
+          if version < fixed:
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+                  env_file.write("BUILDX_BAKE_ENTITLEMENTS_FS=0\n")
+              print(
+                  f"Docker Compose {raw} predates the 5.7.0 fs.read fix; "
+                  "enabling the CI-only compatibility workaround."
+              )
+          else:
+              print(
+                  f"Docker Compose {raw} contains the fs.read fix; "
+                  "no Buildx entitlement workaround is enabled."
+              )
+          PY
 
       - name: Install Dev Container CLI
         run: npm install --global @devcontainers/cli@0.90.0
