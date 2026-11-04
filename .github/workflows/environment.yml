@@ -40,7 +40,25 @@ permissions:
   contents: read
 
 jobs:
+  static:
+    name: Static environment configuration
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate shell syntax
+        run: |
+          bash -n environment/docker/ros/dev-start.sh
+          bash -n tools/environment-check/verify-dev-container.sh
+
+      - name: Validate Dev Container JSON
+        run: python3 -m json.tool .devcontainer/devcontainer.json >/dev/null
+
   compose:
+    needs: static
     name: ROS 2 ${{ matrix.ros_distro }} / linux-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     strategy:
