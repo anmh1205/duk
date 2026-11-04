@@ -75,16 +75,18 @@ The `Development environment` GitHub Actions workflow builds and exercises the C
 GPU/NVIDIA runtime configuration, Jetson/JetPack images, GUI forwarding, direct USB/CAN access and ROS 2 communication with external physical networks are not implicit in the base image. Add them as explicit platform or Compose extensions when their requirements are established.
 
 
-## Current Dev Container toolchain caveat
+## Dev Container Buildx compatibility
 
-Docker Buildx 0.37.2 began enforcing filesystem read entitlements for Compose/Bake. Current Dev Container CLI builds can generate a temporary `Dockerfile-with-features` outside the repository build context; affected Docker Compose versions can therefore fail before the DUK Dockerfile itself is evaluated, with an error requesting `--allow=fs.read=.../Dockerfile-with-features`.
+Buildx 0.37.2 started enforcing filesystem read entitlements for Compose/Bake. Older Docker Compose releases did not grant read access to a Dockerfile located outside the build context. Dev Container CLI creates a temporary `Dockerfile-with-features` outside the repository context, so that combination can fail before the DUK Dockerfile itself is evaluated.
 
-This is an upstream Docker Compose/Buildx interoperability issue, not a DUK container-layout requirement. DUK CI uses `BUILDX_BAKE_ENTITLEMENTS_FS=0` **only for the Dev Container lifecycle job** so the repository configuration can still be exercised while affected runner versions are present. The normal Compose jobs do not use this override.
+Docker Compose **5.7.0**, released on 2 November 2026, includes the upstream permission fix. Use Compose 5.7.0 or newer when possible.
 
-For a local workstation, prefer updating Docker Compose to a release containing the upstream fix. If an affected toolchain must be used temporarily, launch VS Code from a shell with:
+DUK CI checks the installed Compose version. It enables `BUILDX_BAKE_ENTITLEMENTS_FS=0` only when the runner is older than 5.7.0; newer Compose versions run without the override. Normal Compose matrix jobs never use this compatibility flag.
+
+If a local workstation cannot yet update Compose and hits the `Dockerfile-with-features` filesystem-entitlement error, a bounded temporary workaround is:
 
 ```bash
 BUILDX_BAKE_ENTITLEMENTS_FS=0 code .
 ```
 
-This disables Buildx filesystem entitlement checking for builds started by that process, so it should be treated as a temporary compatibility workaround rather than persisted globally. Remove it once the local Docker Compose version includes the upstream fix.
+This disables Buildx filesystem entitlement checking for builds started by that process, so do not persist it globally. Remove it after upgrading Docker Compose.
