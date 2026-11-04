@@ -106,6 +106,8 @@ print(f"matplotlib={matplotlib.__version__}")
 PY
 
 if [[ "${mode}" == "--full" ]]; then
+  python -m pip check
+
   if [[ "${COLCON_DEFAULTS_FILE:-}" != "/etc/duk-colcon-defaults.yaml" ]]; then
     echo "unexpected COLCON_DEFAULTS_FILE: ${COLCON_DEFAULTS_FILE:-<unset>}" >&2
     exit 1
