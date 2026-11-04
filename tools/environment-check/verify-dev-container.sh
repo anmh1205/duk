@@ -64,7 +64,7 @@ set +u
 source "/opt/ros/${ROS_DISTRO}/setup.bash"
 set -u
 
-for command_name in python git colcon ros2 jupyter; do
+for command_name in python git colcon ros2 rosdep vcs jupyter; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "required command is missing: ${command_name}" >&2
     exit 1
