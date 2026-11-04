@@ -69,6 +69,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install "/tmp/duk-core[test,research]" \
     && rm -rf /tmp/duk-core
 
+COPY environment/docker/ros/dev-start.sh /usr/local/bin/duk-dev-start
+RUN chmod 0755 /usr/local/bin/duk-dev-start \
+    && mkdir -p /workspace \
+    && chown "${DEV_UID}:${DEV_GID}" /workspace
+
 # ROS and a built DUK overlay are sourced for interactive Bash terminals.
 RUN printf '%s\n' \
     'if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then source "/opt/ros/$ROS_DISTRO/setup.bash"; fi' \
@@ -79,4 +84,4 @@ RUN printf '%s\n' \
 WORKDIR /workspace
 USER ${DEV_USER}
 
-CMD ["sleep", "infinity"]
+CMD ["duk-dev-start"]
