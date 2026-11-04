@@ -14,17 +14,30 @@ if [[ -z "${repo_root}" ]]; then
   exit 1
 fi
 
+if [[ "$(id -u)" == "0" ]]; then
+  echo "development container must not run as root" >&2
+  exit 1
+fi
+
+if [[ "$(id -un)" != "duk" ]]; then
+  echo "unexpected development user: $(id -un)" >&2
+  exit 1
+fi
+
 if [[ ! -f "/opt/ros/${ROS_DISTRO:?ROS_DISTRO is not set}/setup.bash" ]]; then
   echo "ROS setup file is missing for ROS_DISTRO=${ROS_DISTRO}" >&2
   exit 1
 fi
+
+# shellcheck disable=SC1090
+source "/opt/ros/${ROS_DISTRO}/setup.bash"
 
 if [[ "${VIRTUAL_ENV:-}" != "/opt/duk-venv" ]]; then
   echo "unexpected VIRTUAL_ENV: ${VIRTUAL_ENV:-<unset>}" >&2
   exit 1
 fi
 
-for command_name in python git colcon jupyter; do
+for command_name in python git colcon ros2 jupyter; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "required command is missing: ${command_name}" >&2
     exit 1
@@ -37,10 +50,15 @@ import sys
 
 repo_root = Path(sys.argv[1]).resolve()
 expected_source = (repo_root / "robot/software/core/src").resolve()
+expected_prefix = Path("/opt/duk-venv").resolve()
+
+if Path(sys.prefix).resolve() != expected_prefix:
+    raise SystemExit(f"unexpected Python prefix: {sys.prefix}")
 
 import duk_core
 import matplotlib
 import numpy
+import rclpy
 import scipy
 import sympy
 
@@ -51,7 +69,9 @@ if expected_source not in module_path.parents:
     )
 
 print(f"python={sys.version.split()[0]}")
+print(f"python_prefix={sys.prefix}")
 print(f"duk_core={module_path}")
+print(f"rclpy={Path(rclpy.__file__).resolve()}")
 print(f"numpy={numpy.__version__}")
 print(f"scipy={scipy.__version__}")
 print(f"sympy={sympy.__version__}")
@@ -59,7 +79,10 @@ print(f"matplotlib={matplotlib.__version__}")
 PY
 
 if [[ "${mode}" == "--full" ]]; then
-  python robot/software/core/examples/duk_leg_kinematics.py     --angle-deg 75     --branch 1     >/dev/null
+  python robot/software/core/examples/duk_leg_kinematics.py \
+    --angle-deg 75 \
+    --branch 1 \
+    >/dev/null
 
   python -m pytest -q -p no:cacheprovider robot/software/core/tests
 fi
