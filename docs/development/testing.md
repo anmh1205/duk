@@ -43,6 +43,8 @@ The workflow also validates:
 
 CI concurrency cancels superseded runs for the same ref so stale environment builds do not consume runners or obscure the current result.
 
+The environment workflow also runs weekly on the default branch. This is intentional: ROS base-image tags and allowed Python dependency ranges can change outside the repository, so scheduled verification detects upstream drift even when no DUK commit has changed.
+
 ## Evidence boundaries
 
 A green Python-core job does not prove the Docker image is valid. A green development-environment workflow establishes only the combinations explicitly exercised above.
