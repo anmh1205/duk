@@ -3,8 +3,8 @@ set -euo pipefail
 
 mode="${1:---quick}"
 
-if [[ "${mode}" != "--quick" && "${mode}" != "--full" ]]; then
-  echo "usage: bash tools/environment-check/verify-dev-container.sh [--quick|--full]" >&2
+if [[ "${mode}" != "--health" && "${mode}" != "--quick" && "${mode}" != "--full" ]]; then
+  echo "usage: bash tools/environment-check/verify-dev-container.sh [--health|--quick|--full]" >&2
   exit 2
 fi
 
@@ -37,6 +37,16 @@ source "/opt/ros/${ROS_DISTRO}/setup.bash"
 if [[ "${VIRTUAL_ENV:-}" != "/opt/duk-venv" ]]; then
   echo "unexpected VIRTUAL_ENV: ${VIRTUAL_ENV:-<unset>}" >&2
   exit 1
+fi
+
+if [[ "${mode}" == "--health" ]]; then
+  if [[ ! -x "/opt/duk-venv/bin/python" ]]; then
+    echo "DUK Python virtual environment is not executable" >&2
+    exit 1
+  fi
+  PYTHONPATH="${repo_root}/robot/software/core/src" \
+    /opt/duk-venv/bin/python -c "import duk_core" >/dev/null
+  exit 0
 fi
 
 for command_name in python git colcon ros2 jupyter; do
