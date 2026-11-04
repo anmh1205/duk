@@ -2,6 +2,8 @@ name: Development environment
 
 on:
   push:
+    branches:
+      - main
     paths:
       - ".devcontainer/**"
       - ".dockerignore"
@@ -33,6 +35,7 @@ on:
       - "robot/software/ros2_ws/src/**"
       - "tools/environment-check/**"
       - ".github/workflows/environment.yml"
+  workflow_dispatch:
 
 concurrency:
   group: development-environment-${{ github.ref }}
