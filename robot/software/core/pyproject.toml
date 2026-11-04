@@ -12,7 +12,7 @@ license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8,<10"]
+test = ["pytest>=8,<9"]
 research = [
   "numpy>=1.26,<3",
   "scipy>=1.11,<2",
