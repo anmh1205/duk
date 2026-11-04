@@ -14,7 +14,8 @@ dependencies = []
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
 research = [
-  "numpy>=1.26,<3",
+  # Keep the NumPy 1.x ABI while ROS apt binary extensions may still target it.
+  "numpy>=1.26,<2",
   "scipy>=1.11,<2",
   "sympy>=1.12,<2",
   "matplotlib>=3.8,<4",
