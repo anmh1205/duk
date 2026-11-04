@@ -1,27 +1,50 @@
 # Testing
 
-DUK currently has two complementary automated checks.
+DUK uses independent core tests and end-to-end development-environment tests. Both are required because a Python package can pass in isolation while the ROS/Docker environment is still broken.
 
 ## Python core
 
-`.github/workflows/python-core.yml` installs `duk-core[test]` directly on the GitHub runner and verifies:
+`.github/workflows/python-core.yml` installs `duk-core[test]` directly on an Ubuntu 24.04 runner and verifies:
 
 - package unit tests;
 - the standalone DUK leg-kinematics example;
 - Python source compilation.
 
-This keeps the numerical package independently testable without ROS or Docker.
+The workflow runs for pull requests and relevant changes pushed to `main`. This keeps the numerical package independently testable without ROS or Docker.
 
 ## Development environment
 
-`.github/workflows/environment.yml` validates the actual development-container packaging. For each configured ROS distribution it:
+`.github/workflows/environment.yml` validates the actual container packaging.
 
-1. resolves `docker compose config`;
-2. builds the development image;
-3. starts the Compose service and waits for its healthcheck;
-4. runs `tools/environment-check/verify-dev-container.sh --full` inside the service;
-5. tears down containers and named test volumes.
+The primary Compose matrix exercises:
 
-The full environment verification checks the Python research stack, confirms that `duk_core` is imported from the mounted workspace, runs the model example and executes the core unit tests.
+| ROS 2 | Architecture | Runner |
+| --- | --- | --- |
+| Jazzy | amd64 | Ubuntu 24.04 |
+| Humble | amd64 | Ubuntu 24.04 |
+| Jazzy | arm64 | Ubuntu 24.04 ARM |
+| Humble | arm64 | Ubuntu 24.04 ARM |
 
-A green Python-core job does not prove the Docker image is valid; a green environment job does. Neither proves GPU, Jetson, hardware I/O, simulation GUI or physical-robot compatibility.
+Each matrix job:
+
+1. validates the resolved Compose configuration;
+2. builds the development image natively on the target architecture;
+3. starts the service and waits for the lightweight healthcheck;
+4. runs `tools/environment-check/verify-dev-container.sh --full`;
+5. tears down the service and test volumes.
+
+Full verification checks the non-root developer identity, ROS and Python toolchain, workspace-source import path, NumPy/SciPy/SymPy/Matplotlib and `rclpy` imports, `pip check`, writable external colcon volumes, `colcon build`, the DUK model example and core unit tests.
+
+The workflow also validates:
+
+- the Jazzy/amd64 Dev Container lifecycle with the Dev Container CLI, including post-create commands and the full verifier;
+- the Jazzy/amd64 Compose environment from an Ubuntu 26.04 host;
+- shell syntax and Dev Container JSON before expensive image builds.
+
+CI concurrency cancels superseded runs for the same ref so stale environment builds do not consume runners or obscure the current result.
+
+## Evidence boundaries
+
+A green Python-core job does not prove the Docker image is valid. A green development-environment workflow establishes only the combinations explicitly exercised above.
+
+It does **not** establish NVIDIA GPU acceleration, Jetson/JetPack/L4T, simulation GUI forwarding, USB/serial/CAN passthrough, external ROS 2 DDS networking or physical-robot access. Those require separate runtime definitions and tests.
