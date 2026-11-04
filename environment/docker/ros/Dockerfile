@@ -13,7 +13,8 @@ ENV ROS_DISTRO=${ROS_DISTRO} \
     PATH=/opt/duk-venv/bin:${PATH} \
     PYTHONPATH=/workspace/robot/software/core/src \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    COLCON_DEFAULTS_FILE=/etc/duk-colcon-defaults.yaml
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -70,6 +71,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && rm -rf /tmp/duk-core
 
 COPY environment/docker/ros/dev-start.sh /usr/local/bin/duk-dev-start
+COPY environment/docker/ros/colcon-defaults.yaml /etc/duk-colcon-defaults.yaml
 RUN chmod 0755 /usr/local/bin/duk-dev-start \
     && mkdir -p /workspace \
     && chown "${DEV_UID}:${DEV_GID}" /workspace
@@ -77,7 +79,7 @@ RUN chmod 0755 /usr/local/bin/duk-dev-start \
 # ROS and a built DUK overlay are sourced for interactive Bash terminals.
 RUN printf '%s\n' \
     'if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then source "/opt/ros/$ROS_DISTRO/setup.bash"; fi' \
-    'if [ -f "/workspace/robot/software/ros2_ws/install/setup.bash" ]; then source "/workspace/robot/software/ros2_ws/install/setup.bash"; fi' \
+    'if [ -f "/opt/duk-ros/install/setup.bash" ]; then source "/opt/duk-ros/install/setup.bash"; fi' \
     > /etc/duk-ros.bash \
     && printf '%s\n' 'source /etc/duk-ros.bash' >> /etc/bash.bashrc
 
