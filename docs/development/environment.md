@@ -15,7 +15,7 @@ The development Dockerfile is `environment/docker/ros/Dockerfile`.
 
 The base image is the official ROS `${ROS_DISTRO}-ros-base` image. The official ROS image owns the ROS/Ubuntu pairing for the selected distro. DUK adds only project-specific development requirements.
 
-Python research/test dependencies are installed into `/opt/duk-venv` while the image is built. NumPy is intentionally constrained to `>=1.26,<2` while the environment supports ROS distributions whose apt-provided binary Python extensions may still target the NumPy 1.x ABI. The package source copied during image build exists only to resolve/install the package dependency set. At runtime the bind-mounted workspace source takes precedence through:
+Python research/test dependencies are installed into `/opt/duk-venv` while the image is built. NumPy is intentionally constrained to `>=1.26,<2` while the environment supports ROS distributions whose apt-provided binary Python extensions may still target the NumPy 1.x ABI. The image build copies only the core package metadata/README and creates a minimal temporary package scaffold to resolve the declared extras. Live DUK source is deliberately not baked into the dependency layer. At runtime the bind-mounted workspace source takes precedence through:
 
 ```text
 PYTHONPATH=/workspace/robot/software/core/src
