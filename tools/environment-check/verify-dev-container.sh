@@ -40,9 +40,9 @@ if [[ "${VIRTUAL_ENV:-}" != "/opt/duk-venv" ]]; then
 fi
 
 for ros_path in \
-  "${repo_root}/robot/software/ros2_ws/build" \
-  "${repo_root}/robot/software/ros2_ws/install" \
-  "${repo_root}/robot/software/ros2_ws/log"; do
+  "/opt/duk-ros/build" \
+  "/opt/duk-ros/install" \
+  "/opt/duk-ros/log"; do
   if [[ ! -d "${ros_path}" || ! -w "${ros_path}" ]]; then
     echo "ROS workspace volume is not writable: ${ros_path}" >&2
     exit 1
@@ -101,6 +101,16 @@ print(f"matplotlib={matplotlib.__version__}")
 PY
 
 if [[ "${mode}" == "--full" ]]; then
+  if [[ "${COLCON_DEFAULTS_FILE:-}" != "/etc/duk-colcon-defaults.yaml" ]]; then
+    echo "unexpected COLCON_DEFAULTS_FILE: ${COLCON_DEFAULTS_FILE:-<unset>}" >&2
+    exit 1
+  fi
+
+  (
+    cd "${repo_root}/robot/software/ros2_ws"
+    colcon build >/dev/null
+  )
+
   python robot/software/core/examples/duk_leg_kinematics.py \
     --angle-deg 75 \
     --branch 1 \
