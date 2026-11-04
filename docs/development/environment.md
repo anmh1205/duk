@@ -73,3 +73,18 @@ The `Development environment` GitHub Actions workflow builds and exercises the C
 ## Deliberately separate future concerns
 
 GPU/NVIDIA runtime configuration, Jetson/JetPack images, GUI forwarding, direct USB/CAN access and ROS 2 communication with external physical networks are not implicit in the base image. Add them as explicit platform or Compose extensions when their requirements are established.
+
+
+## Current Dev Container toolchain caveat
+
+Docker Buildx 0.37.2 began enforcing filesystem read entitlements for Compose/Bake. Current Dev Container CLI builds can generate a temporary `Dockerfile-with-features` outside the repository build context; affected Docker Compose versions can therefore fail before the DUK Dockerfile itself is evaluated, with an error requesting `--allow=fs.read=.../Dockerfile-with-features`.
+
+This is an upstream Docker Compose/Buildx interoperability issue, not a DUK container-layout requirement. DUK CI uses `BUILDX_BAKE_ENTITLEMENTS_FS=0` **only for the Dev Container lifecycle job** so the repository configuration can still be exercised while affected runner versions are present. The normal Compose jobs do not use this override.
+
+For a local workstation, prefer updating Docker Compose to a release containing the upstream fix. If an affected toolchain must be used temporarily, launch VS Code from a shell with:
+
+```bash
+BUILDX_BAKE_ENTITLEMENTS_FS=0 code .
+```
+
+This disables Buildx filesystem entitlement checking for builds started by that process, so it should be treated as a temporary compatibility workaround rather than persisted globally. Remove it once the local Docker Compose version includes the upstream fix.
