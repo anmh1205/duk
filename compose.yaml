@@ -12,9 +12,9 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace
-      - ros-build:/workspace/robot/software/ros2_ws/build
-      - ros-install:/workspace/robot/software/ros2_ws/install
-      - ros-log:/workspace/robot/software/ros2_ws/log
+      - ros-build:/opt/duk-ros/build
+      - ros-install:/opt/duk-ros/install
+      - ros-log:/opt/duk-ros/log
     stdin_open: true
     tty: true
     init: true
