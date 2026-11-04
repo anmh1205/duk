@@ -64,7 +64,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # so ordinary source edits require no editable-install bootstrap.
 COPY robot/software/core/pyproject.toml /tmp/duk-core/pyproject.toml
 COPY robot/software/core/README.md /tmp/duk-core/README.md
-COPY robot/software/core/src /tmp/duk-core/src
+
+# Resolve the declared extras without copying the live source into the image.
+# A minimal package scaffold satisfies setuptools package discovery; the real
+# package always comes from the bind-mounted workspace through PYTHONPATH.
+RUN mkdir -p /tmp/duk-core/src/duk_core \
+    && printf '%s\n' '"""Build-time dependency scaffold; runtime source is bind-mounted."""' \
+       > /tmp/duk-core/src/duk_core/__init__.py
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install "/tmp/duk-core[test,research]" \
