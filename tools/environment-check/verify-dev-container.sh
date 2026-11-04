@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode="${1:---quick}"
+
+if [[ "${mode}" != "--quick" && "${mode}" != "--full" ]]; then
+  echo "usage: bash tools/environment-check/verify-dev-container.sh [--quick|--full]" >&2
+  exit 2
+fi
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "${repo_root}" ]]; then
+  echo "DUK repository is not available in the current workspace" >&2
+  exit 1
+fi
+
+if [[ ! -f "/opt/ros/${ROS_DISTRO:?ROS_DISTRO is not set}/setup.bash" ]]; then
+  echo "ROS setup file is missing for ROS_DISTRO=${ROS_DISTRO}" >&2
+  exit 1
+fi
+
+if [[ "${VIRTUAL_ENV:-}" != "/opt/duk-venv" ]]; then
+  echo "unexpected VIRTUAL_ENV: ${VIRTUAL_ENV:-<unset>}" >&2
+  exit 1
+fi
+
+for command_name in python git colcon jupyter; do
+  if ! command -v "${command_name}" >/dev/null 2>&1; then
+    echo "required command is missing: ${command_name}" >&2
+    exit 1
+  fi
+done
+
+python - "${repo_root}" <<'PY'
+from pathlib import Path
+import sys
+
+repo_root = Path(sys.argv[1]).resolve()
+expected_source = (repo_root / "robot/software/core/src").resolve()
+
+import duk_core
+import matplotlib
+import numpy
+import scipy
+import sympy
+
+module_path = Path(duk_core.__file__).resolve()
+if expected_source not in module_path.parents:
+    raise SystemExit(
+        f"duk_core is not loaded from workspace source: {module_path}"
+    )
+
+print(f"python={sys.version.split()[0]}")
+print(f"duk_core={module_path}")
+print(f"numpy={numpy.__version__}")
+print(f"scipy={scipy.__version__}")
+print(f"sympy={sympy.__version__}")
+print(f"matplotlib={matplotlib.__version__}")
+PY
+
+if [[ "${mode}" == "--full" ]]; then
+  python robot/software/core/examples/duk_leg_kinematics.py     --angle-deg 75     --branch 1     >/dev/null
+
+  python -m pytest -q -p no:cacheprovider robot/software/core/tests
+fi
+
+echo "DUK development container verification: OK (${mode#--})"
