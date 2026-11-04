@@ -2,6 +2,8 @@ name: Python core
 
 on:
   push:
+    branches:
+      - main
     paths:
       - "robot/config/physical/**"
       - "robot/software/core/**"
@@ -11,6 +13,7 @@ on:
       - "robot/config/physical/**"
       - "robot/software/core/**"
       - ".github/workflows/python-core.yml"
+  workflow_dispatch:
 
 concurrency:
   group: python-core-${{ github.ref }}
