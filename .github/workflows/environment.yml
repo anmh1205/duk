@@ -30,6 +30,10 @@ on:
       - "tools/environment-check/**"
       - ".github/workflows/environment.yml"
 
+concurrency:
+  group: development-environment-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
