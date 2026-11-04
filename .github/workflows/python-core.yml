@@ -2,7 +2,15 @@ name: Python core
 
 on:
   push:
+    paths:
+      - "robot/config/physical/**"
+      - "robot/software/core/**"
+      - ".github/workflows/python-core.yml"
   pull_request:
+    paths:
+      - "robot/config/physical/**"
+      - "robot/software/core/**"
+      - ".github/workflows/python-core.yml"
 
 concurrency:
   group: python-core-${{ github.ref }}
