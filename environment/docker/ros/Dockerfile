@@ -26,8 +26,8 @@ RUN apt-get update \
         sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Create one non-root developer account. Ubuntu 24.04-derived images may
-# already contain UID/GID 1000, so reuse/rename those identities when present.
+# Create one non-root developer account. Ubuntu-derived images can already
+# contain UID/GID 1000, so reuse/rename those identities when present.
 RUN set -eux; \
     existing_group="$(getent group "${DEV_GID}" | cut -d: -f1 || true)"; \
     if [[ -n "${existing_group}" && "${existing_group}" != "${DEV_USER}" ]]; then \
@@ -45,11 +45,22 @@ RUN set -eux; \
     echo "${DEV_USER} ALL=(root) NOPASSWD:ALL" > "/etc/sudoers.d/${DEV_USER}"; \
     chmod 0440 "/etc/sudoers.d/${DEV_USER}"
 
-# Keep Python research/test dependencies in the image. The workspace source is
-# bind-mounted at runtime and takes precedence through PYTHONPATH, so source
-# edits are immediately visible without an editable-install bootstrap step.
+# Keep ROS Python packages visible while isolating DUK's Python dependency set.
 RUN python3 -m venv --system-site-packages "${VIRTUAL_ENV}"
 
+# Humble is based on Ubuntu 22.04 and exposes older system packaging modules
+# through --system-site-packages. Install a modern toolchain into the venv first
+# so PEP 517 builds consistently shadow those system copies.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade \
+        "pip>=25,<26" \
+        "setuptools>=77,<81" \
+        "wheel>=0.45,<1" \
+        "packaging>=24,<26"
+
+# Install the core's declared test/research dependency set into the image.
+# At runtime the bind-mounted workspace source takes precedence via PYTHONPATH,
+# so ordinary source edits require no editable-install bootstrap.
 COPY robot/software/core/pyproject.toml /tmp/duk-core/pyproject.toml
 COPY robot/software/core/README.md /tmp/duk-core/README.md
 COPY robot/software/core/src /tmp/duk-core/src
