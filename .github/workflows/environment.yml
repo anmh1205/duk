@@ -9,6 +9,8 @@ on:
       - "compose.yaml"
       - "environment/docker/**"
       - "environment/platforms/**"
+      - "robot/config/physical/**"
+      - "robot/config/physical/**"
       - "robot/software/core/pyproject.toml"
       - "robot/software/core/src/**"
       - "robot/software/core/examples/**"
