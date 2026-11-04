@@ -50,7 +50,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Validate resolved Compose configuration
         run: docker compose config --quiet
@@ -63,7 +65,8 @@ jobs:
 
       - name: Verify tools, Python stack, model example and tests
         run: |
-          docker compose exec -T dev             bash tools/environment-check/verify-dev-container.sh --full
+          docker compose exec -T dev \
+            bash tools/environment-check/verify-dev-container.sh --full
 
       - name: Show Compose state on failure
         if: failure()
