@@ -21,7 +21,7 @@ jobs:
         run: python -m pip install -e "./robot/software/core[test]"
       - name: Run unit tests
         run: python -m pytest -q robot/software/core/tests
-      - name: Run standalone example
-        run: python robot/software/core/examples/planar_chain.py
+      - name: Run DUK leg-kinematics example
+        run: python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1
       - name: Compile Python sources
         run: python -m compileall -q robot/software/core/src
