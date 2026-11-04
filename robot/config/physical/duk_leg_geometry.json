@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "units": {
+    "length": "mm",
+    "angle": "deg"
+  },
+  "links_mm": {
+    "AB": 131.0,
+    "BC": 42.0,
+    "CD": 135.0,
+    "AD": 81.0
+  },
+  "wheel_center_offset_mm": {
+    "BH": 119.0,
+    "OH": 55.0,
+    "wheel_side": -1
+  },
+  "wheel_mm": {
+    "diameter": 150.0,
+    "radius": 75.0
+  },
+  "ad_orientation_deg": 30.0,
+  "assembly_branch": null,
+  "notes": [
+    "H, B, C are collinear in the order H-B-C.",
+    "The local B-x axis points from B to C; local +y points opposite wheel center O.",
+    "assembly_branch remains unset until the CAD assembly branch is explicitly verified."
+  ]
+}
