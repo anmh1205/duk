@@ -31,9 +31,6 @@ if [[ ! -f "/opt/ros/${ROS_DISTRO:?ROS_DISTRO is not set}/setup.bash" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
-source "/opt/ros/${ROS_DISTRO}/setup.bash"
-
 if [[ "${VIRTUAL_ENV:-}" != "/opt/duk-venv" ]]; then
   echo "unexpected VIRTUAL_ENV: ${VIRTUAL_ENV:-<unset>}" >&2
   exit 1
@@ -58,6 +55,14 @@ if [[ "${mode}" == "--health" ]]; then
     /opt/duk-venv/bin/python -c "import duk_core" >/dev/null
   exit 0
 fi
+
+# ROS environment scripts are not required for the recurring health probe.
+# Disable nounset while sourcing because upstream setup scripts are not
+# guaranteed to be compatible with a caller's `set -u`.
+set +u
+# shellcheck disable=SC1090
+source "/opt/ros/${ROS_DISTRO}/setup.bash"
+set -u
 
 for command_name in python git colcon ros2 jupyter; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
