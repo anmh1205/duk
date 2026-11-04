@@ -39,6 +39,16 @@ if [[ "${VIRTUAL_ENV:-}" != "/opt/duk-venv" ]]; then
   exit 1
 fi
 
+for ros_path in \
+  "${repo_root}/robot/software/ros2_ws/build" \
+  "${repo_root}/robot/software/ros2_ws/install" \
+  "${repo_root}/robot/software/ros2_ws/log"; do
+  if [[ ! -d "${ros_path}" || ! -w "${ros_path}" ]]; then
+    echo "ROS workspace volume is not writable: ${ros_path}" >&2
+    exit 1
+  fi
+done
+
 if [[ "${mode}" == "--health" ]]; then
   if [[ ! -x "/opt/duk-venv/bin/python" ]]; then
     echo "DUK Python virtual environment is not executable" >&2
