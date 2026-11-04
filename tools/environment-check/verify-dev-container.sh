@@ -116,12 +116,15 @@ if [[ "${mode}" == "--full" ]]; then
     colcon build >/dev/null
   )
 
-  python robot/software/core/examples/duk_leg_kinematics.py \
-    --angle-deg 75 \
-    --branch 1 \
-    >/dev/null
+  (
+    cd "${repo_root}"
+    python robot/software/core/examples/duk_leg_kinematics.py \
+      --angle-deg 75 \
+      --branch 1 \
+      >/dev/null
 
-  python -m pytest -q -p no:cacheprovider robot/software/core/tests
+    python -m pytest -q -p no:cacheprovider robot/software/core/tests
+  )
 fi
 
 echo "DUK development container verification: OK (${mode#--})"
