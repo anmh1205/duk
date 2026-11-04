@@ -35,14 +35,24 @@ permissions:
 
 jobs:
   compose:
-    name: ROS 2 ${{ matrix.ros_distro }} / linux-amd64
-    runs-on: ubuntu-24.04
+    name: ROS 2 ${{ matrix.ros_distro }} / linux-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        ros_distro:
-          - jazzy
-          - humble
+        include:
+          - ros_distro: jazzy
+            arch: amd64
+            runner: ubuntu-24.04
+          - ros_distro: humble
+            arch: amd64
+            runner: ubuntu-24.04
+          - ros_distro: jazzy
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - ros_distro: humble
+            arch: arm64
+            runner: ubuntu-24.04-arm
     env:
       ROS_DISTRO: ${{ matrix.ros_distro }}
 
@@ -76,6 +86,72 @@ jobs:
         run: |
           docker compose ps
           docker compose logs --no-color dev
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  devcontainer:
+    name: Dev Container lifecycle / Jazzy / linux-amd64
+    needs: compose
+    runs-on: ubuntu-24.04
+    env:
+      ROS_DISTRO: jazzy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Match container developer identity to runner
+        run: |
+          echo "DEV_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "DEV_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Install Dev Container CLI
+        run: npm install --global @devcontainers/cli@0.90.0
+
+      - name: Create Dev Container
+        run: devcontainer up --workspace-folder .
+
+      - name: Run Dev Container lifecycle commands
+        run: devcontainer run-user-commands --workspace-folder .
+
+      - name: Verify Dev Container runtime
+        run: |
+          devcontainer exec --workspace-folder . \
+            bash tools/environment-check/verify-dev-container.sh --full
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  ubuntu-next:
+    name: Host Ubuntu 26.04 / Jazzy / linux-amd64
+    needs: compose
+    runs-on: ubuntu-26.04
+    env:
+      ROS_DISTRO: jazzy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Match container developer identity to runner
+        run: |
+          echo "DEV_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "DEV_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Build and start on Ubuntu 26.04 host
+        run: docker compose up -d --build --wait dev
+
+      - name: Verify runtime on Ubuntu 26.04 host
+        run: |
+          docker compose exec -T dev \
+            bash tools/environment-check/verify-dev-container.sh --full
 
       - name: Tear down
         if: always()
