@@ -7,9 +7,6 @@ robot/software/*
 robot/software/core/*
 !robot/software/core/pyproject.toml
 !robot/software/core/README.md
-!robot/software/core/src/
-!robot/software/core/src/**
-
 !environment/
 environment/*
 !environment/docker/
