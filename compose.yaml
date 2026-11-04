@@ -22,7 +22,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "bash /workspace/tools/environment-check/verify-dev-container.sh --quick >/dev/null 2>&1",
+          "bash /workspace/tools/environment-check/verify-dev-container.sh --health >/dev/null 2>&1",
         ]
       interval: 30s
       timeout: 10s
