@@ -7,11 +7,12 @@ The supported development workflow is container-first. A host does not need the 
 For the VS Code workflow:
 
 - Git;
-- Docker Engine with Docker Compose v2;
+- Docker Engine;
+- the Docker Compose plugin; Compose 5.7.0 or newer is recommended for Dev Container builds when using Buildx 0.37.2 or newer;
 - Visual Studio Code;
 - the Dev Containers extension.
 
-For the terminal-only workflow, VS Code and the extension are not required.
+For the terminal-only workflow, VS Code and the extension are not required. Older Compose releases can still run the normal Compose workflow; if Dev Containers hit the Buildx temporary-Dockerfile filesystem-entitlement regression, use the bounded workaround documented in [Development Environment](environment.md) until Compose can be upgraded.
 
 ## Clone
 
