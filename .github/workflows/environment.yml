@@ -45,14 +45,17 @@ jobs:
           - humble
     env:
       ROS_DISTRO: ${{ matrix.ros_distro }}
-      DEV_UID: "1000"
-      DEV_GID: "1000"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Match container developer identity to runner
+        run: |
+          echo "DEV_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "DEV_GID=$(id -g)" >> "$GITHUB_ENV"
 
       - name: Validate resolved Compose configuration
         run: docker compose config --quiet
