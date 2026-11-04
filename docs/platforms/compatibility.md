@@ -20,7 +20,7 @@ The Ubuntu 26.04 job additionally verifies that the same Jazzy Compose developme
 
 The Jazzy/amd64 Dev Container lifecycle is also exercised with the Dev Container CLI: create the container, run lifecycle commands and run the full environment verifier.
 
-A temporary **CI-only** Buildx filesystem-entitlement compatibility override is currently required on the Ubuntu 24.04 GitHub runner because its Compose/Buildx combination is affected by an upstream Docker regression when Dev Container CLI generates a temporary Dockerfile outside the repository build context. See [Development environment](../development/environment.md) for the bounded workaround.
+Docker Compose 5.7.0 includes the upstream fix for the Buildx filesystem-entitlement regression that affected temporary Dev Container Dockerfiles outside the repository build context. The CI job detects the installed Compose version and enables the compatibility override only on older affected runners. See [Development environment](../development/environment.md) for the exact boundary and fallback.
 
 ## What ARM64 verification does and does not mean
 
