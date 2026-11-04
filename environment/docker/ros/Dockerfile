@@ -55,7 +55,7 @@ RUN python3 -m venv --system-site-packages "${VIRTUAL_ENV}"
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade \
         "pip>=25,<26" \
-        "setuptools>=77,<81" \
+        "setuptools>=77,<80" \
         "wheel>=0.45,<1" \
         "packaging>=24,<26"
 
