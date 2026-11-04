@@ -16,6 +16,8 @@ The image contains:
 
 The repository is bind-mounted at `/workspace`. `PYTHONPATH` points at `/workspace/robot/software/core/src`, so core source edits are immediately visible without running an editable install after the container starts.
 
+ROS colcon outputs do not live in the source tree. Build/install/log data is stored in distro-scoped named volumes mounted under `/opt/duk-ros`, so switching ROS distributions cannot reuse an incompatible overlay and normal development does not dirty the repository.
+
 ## Entry points
 
 ### VS Code / Dev Containers
@@ -54,6 +56,10 @@ ROS_DISTRO=humble docker compose up -d --build --wait
 ```
 
 For Dev Containers, put `ROS_DISTRO=humble` in a local `.env` and rebuild the container.
+
+## Verified portability
+
+CI exercises the same Compose image on native amd64 and arm64 for both Jazzy and Humble. Jazzy/amd64 is additionally exercised from an Ubuntu 26.04 host, and the VS Code Dev Container lifecycle is tested separately. See [Platform compatibility](../docs/platforms/compatibility.md) for the exact evidence boundary.
 
 ## What is not claimed
 
