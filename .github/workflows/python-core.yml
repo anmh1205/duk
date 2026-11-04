@@ -2,21 +2,40 @@ name: Python core
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - "robot/config/physical/**"
+      - "robot/software/core/**"
+      - ".github/workflows/python-core.yml"
   pull_request:
+    paths:
+      - "robot/config/physical/**"
+      - "robot/software/core/**"
+      - ".github/workflows/python-core.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: python-core-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   core:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: robot/software/core/pyproject.toml
       - name: Install core and test dependencies
         run: python -m pip install -e "./robot/software/core[test]"
       - name: Run unit tests

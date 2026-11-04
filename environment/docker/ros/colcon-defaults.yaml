@@ -1,0 +1,11 @@
+"":
+  log-base: /opt/duk-ros/log
+
+build:
+  build-base: /opt/duk-ros/build
+  install-base: /opt/duk-ros/install
+
+test:
+  build-base: /opt/duk-ros/build
+  install-base: /opt/duk-ros/install
+  test-result-base: /opt/duk-ros/build

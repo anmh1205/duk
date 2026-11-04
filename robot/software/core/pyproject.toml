@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools>=77,<80", "wheel>=0.45,<1"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,14 +12,15 @@ license = "MIT"
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=8,<10"]
+test = ["pytest>=8,<9"]
 research = [
-  "numpy>=1.26",
-  "scipy>=1.11",
-  "sympy>=1.12",
-  "matplotlib>=3.8",
-  "jupyterlab>=4",
-  "ipywidgets>=8"
+  # Keep the NumPy 1.x ABI while ROS apt binary extensions may still target it.
+  "numpy>=1.26,<2",
+  "scipy>=1.11,<2",
+  "sympy>=1.12,<2",
+  "matplotlib>=3.8,<4",
+  "jupyterlab>=4,<5",
+  "ipywidgets>=8,<9"
 ]
 
 [tool.setuptools.packages.find]

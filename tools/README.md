@@ -1,11 +1,13 @@
 # Engineering Tools
 
-`tools/` reserves ownership for maintained engineering utilities, including:
+`tools/` owns maintained engineering utilities. Ad hoc tasks belong in [scripts](../scripts/README.md).
 
-- `model-generation/` — model-generation utilities;
-- `validation/` — consistency and validation utilities;
-- `environment-check/` — environment inspection utilities.
+## Current tools
 
-Specific interfaces and implementations will be documented when developed. Ad hoc tasks belong in [scripts](../scripts/README.md).
+| Path | Purpose |
+| --- | --- |
+| `environment-check/verify-dev-container.sh` | Verify the built DUK development container, Python research stack, mounted core source and optional full model/test smoke suite |
+| `model-generation/` | Reserved for maintained model-generation utilities |
+| `validation/` | Reserved for reusable engineering-validation utilities |
 
 [Repository layout](../docs/architecture/repository-layout.md).

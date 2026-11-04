@@ -7,16 +7,27 @@ services:
       dockerfile: environment/docker/ros/Dockerfile
       args:
         ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+        DEV_UID: ${DEV_UID:-1000}
+        DEV_GID: ${DEV_GID:-1000}
     working_dir: /workspace
     volumes:
       - .:/workspace
-      - ros-build:/workspace/robot/software/ros2_ws/build
-      - ros-install:/workspace/robot/software/ros2_ws/install
-      - ros-log:/workspace/robot/software/ros2_ws/log
+      - ros-build:/opt/duk-ros/build
+      - ros-install:/opt/duk-ros/install
+      - ros-log:/opt/duk-ros/log
     stdin_open: true
     tty: true
     init: true
-    command: ["sleep", "infinity"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash /workspace/tools/environment-check/verify-dev-container.sh --health >/dev/null 2>&1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   ros-build:

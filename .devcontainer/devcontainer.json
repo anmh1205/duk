@@ -4,11 +4,25 @@
   "service": "dev",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "postCreateCommand": "python -m pip install -e './robot/software/core[test,research]'",
+  "remoteUser": "duk",
+  "updateRemoteUserUID": true,
+  "postCreateCommand": "bash tools/environment-check/verify-dev-container.sh --quick",
+  "forwardPorts": [8888],
+  "portsAttributes": {
+    "8888": {
+      "label": "JupyterLab",
+      "onAutoForward": "notify"
+    }
+  },
   "customizations": {
     "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/duk-venv/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
       "extensions": [
         "ms-python.python",
+        "ms-python.vscode-pylance",
         "ms-toolsai.jupyter",
         "ms-vscode.cpptools"
       ]
