@@ -14,6 +14,7 @@ on:
       - "robot/software/core/src/**"
       - "robot/software/core/examples/**"
       - "robot/software/core/tests/**"
+      - "robot/software/ros2_ws/src/**"
       - "tools/environment-check/**"
       - ".github/workflows/environment.yml"
   pull_request:
@@ -29,6 +30,7 @@ on:
       - "robot/software/core/src/**"
       - "robot/software/core/examples/**"
       - "robot/software/core/tests/**"
+      - "robot/software/ros2_ws/src/**"
       - "tools/environment-check/**"
       - ".github/workflows/environment.yml"
 
