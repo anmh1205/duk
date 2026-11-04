@@ -38,7 +38,7 @@ The developer account has passwordless sudo for interactive development tasks. P
 
 ## Persistent and ephemeral state
 
-The source repository is bind-mounted at `/workspace`.
+The source repository is bind-mounted at `/workspace`. ROS build artifacts are intentionally kept outside that source tree. The image sets `COLCON_DEFAULTS_FILE=/etc/duk-colcon-defaults.yaml`, so a normal `colcon build` writes to `/opt/duk-ros` without adding build/install/log directories to the repository.
 
 ROS workspace output is separated into named volumes:
 
@@ -46,13 +46,13 @@ ROS workspace output is separated into named volumes:
 - `ros-install`;
 - `ros-log`.
 
-The Compose project name is `duk-${ROS_DISTRO}`, so these named volumes are distro-specific.
+The named volumes are mounted at `/opt/duk-ros/build`, `/opt/duk-ros/install` and `/opt/duk-ros/log`. The Compose project name is `duk-${ROS_DISTRO}`, so these volumes are distro-specific.
 
 Container-local manual package changes are ephemeral and should not be relied upon.
 
 ## ROS shell environment
 
-Interactive Bash shells source the selected ROS installation and source the DUK ROS overlay when `robot/software/ros2_ws/install/setup.bash` exists.
+Interactive Bash shells source the selected ROS installation and source the DUK ROS overlay when `/opt/duk-ros/install/setup.bash` exists.
 
 The core numerical package remains ROS-independent.
 
