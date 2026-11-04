@@ -1,13 +1,41 @@
 schema_version: 1
-# Status is a declaration of verification state, not a compatibility guarantee.
+# "ci-verified" means the repository workflow built and exercised the declared
+# development container on the stated architecture/host. It is not a claim
+# about GPU, vendor BSP, physical I/O, or every Linux distribution.
+verification_source: .github/workflows/environment.yml
+
 targets:
-  desktop-amd64:
+  desktop-amd64-jazzy:
+    architecture: amd64
     ros_distro: jazzy
-    status: unverified
-  desktop-arm64:
+    development_image: ci-verified
+    verified_hosts:
+      - ubuntu-24.04
+      - ubuntu-26.04
+
+  desktop-amd64-humble:
+    architecture: amd64
+    ros_distro: humble
+    development_image: ci-verified
+    verified_hosts:
+      - ubuntu-24.04
+
+  desktop-arm64-jazzy:
+    architecture: arm64
     ros_distro: jazzy
-    status: unverified
+    development_image: ci-verified
+    verified_hosts:
+      - ubuntu-24.04-arm
+
+  desktop-arm64-humble:
+    architecture: arm64
+    ros_distro: humble
+    development_image: ci-verified
+    verified_hosts:
+      - ubuntu-24.04-arm
+
   jetson-arm64:
+    architecture: arm64
     ros_distro: null
     jetpack: null
     status: unconfigured
