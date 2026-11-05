@@ -27,7 +27,7 @@
     "reference_vector": "DA",
     "da_angle_deg": -30
   },
-  "assembly_branch": null,
+  "assembly_branch": -1,
   "notes": [
     "H, B, C are collinear in the order H-B-C.",
     "The local B-x axis points from B to C; local +y points opposite wheel center O.",
@@ -35,6 +35,6 @@
     "The directed vector D->A has angle -30 degrees in the robot frame, so D is higher than A.",
     "The opposite directed vector A->D therefore has angle +150 degrees in the robot frame.",
     "The four-bar solver uses a local solver frame with A=(0,0) and A->D aligned with +x; solver outputs are rotated by the derived A->D angle when transformed into the robot frame.",
-    "assembly_branch remains unset until the CAD assembly branch is explicitly verified."
+    "The physical four-bar assembly branch is -1, verified against the supplied CAD reference: B->C and the wheel-center construction lie on the same side/topology as the mechanical assembly."
   ]
 }
