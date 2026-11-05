@@ -1,4 +1,4 @@
-"""Inspect the established DUK leg geometry without requiring ROS or NumPy."""
+"""Inspect DUK leg geometry directly in canonical robot coordinates."""
 
 from __future__ import annotations
 
@@ -7,10 +7,8 @@ import math
 from pathlib import Path
 
 from duk_core.modeling import (
-    jacobian_in_robot_frame,
     leg_jacobian,
     load_leg_geometry_json,
-    pose_in_robot_frame,
     sample_leg_trajectory,
     solve_leg_pose,
 )
@@ -27,19 +25,14 @@ def repository_geometry_path() -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--angle-deg", type=float, default=75.0)
     parser.add_argument(
-        "--branch",
-        type=int,
-        choices=(-1, 1),
-        default=None,
-        help="override the physical assembly branch from configuration",
-    )
-    parser.add_argument(
-        "--frame",
-        choices=("robot", "solver"),
-        default="robot",
-        help="output frame; robot uses the configured directed D->A convention",
+        "--angle-deg",
+        type=float,
+        default=75.0,
+        help=(
+            "linkage coordinate q in degrees; q is the directed "
+            "counter-clockwise angle from A->B to D->A"
+        ),
     )
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
@@ -47,72 +40,66 @@ def main() -> None:
     geometry = load_leg_geometry_json(
         repository_geometry_path()
     )
-    branch = (
-        geometry.assembly_branch
-        if args.branch is None
-        else args.branch
-    )
-    pose = solve_leg_pose(
-        geometry,
-        math.radians(args.angle_deg),
-        assembly_branch=branch,
-    )
+    q = math.radians(args.angle_deg)
+    pose = solve_leg_pose(geometry, q)
     jacobian = leg_jacobian(geometry, pose)
-    robot_pose = pose_in_robot_frame(geometry, pose)
-    robot_jacobian = jacobian_in_robot_frame(geometry, jacobian)
-    if args.frame == "robot":
-        display_pose = robot_pose
-        display_jacobian = robot_jacobian
-        frame_label = (
-            "robot frame "
-            f"(DA={math.degrees(geometry.da_angle_rad):+.1f} deg, "
-            f"AD={math.degrees(geometry.ad_angle_rad):+.1f} deg)"
-        )
-    else:
-        display_pose = pose
-        display_jacobian = jacobian
-        frame_label = "solver frame (A->D aligned with +x)"
-    lower, upper = geometry.geometric_angle_limits_rad()
+    lower, upper = (
+        geometry.geometric_linkage_angle_limits_rad()
+    )
 
     print("DUK leg geometry")
-    print(f"  BO derived: {geometry.bo_mm:.3f} mm")
-    print(f"  CO derived: {geometry.co_mm:.3f} mm")
+    print("  frame: canonical robot frame")
+    print("  A = (0, 0) mm")
     print(
-        "  geometric input-angle range: "
+        "  DA direction: "
+        f"{math.degrees(geometry.da_angle_rad):+.3f} deg"
+    )
+    print(
+        "  AD direction: "
+        f"{math.degrees(geometry.ad_angle_rad):+.3f} deg"
+    )
+    print(
+        "  q definition: directed CCW angle from A->B to D->A"
+    )
+    print(
+        "  geometric q range: "
         f"{math.degrees(lower):.3f} .. "
         f"{math.degrees(upper):.3f} deg "
         "(singular boundaries, not operating limits)"
     )
     print(
-        "  assembly branch used for this calculation: "
-        f"{branch:+d}"
+        "  derived A->B direction: "
+        f"{math.degrees(geometry.ab_angle_rad(q)):+.3f} deg"
     )
-    print(f"  display frame: {frame_label}")
+    print(f"  BO derived: {geometry.bo_mm:.3f} mm")
+    print(f"  CO derived: {geometry.co_mm:.3f} mm")
     print(
-        "  robot-frame DA direction: "
-        f"{math.degrees(geometry.da_angle_rad):.3f} deg from +Ox"
+        "  topology: "
+        f"B is {geometry.b_side_of_ad} of A->D, "
+        f"C is {geometry.c_side_of_bd} of B->D, "
+        f"O is {geometry.bco_body.o_side_of_bc} of B->C"
     )
-    print(
-        "  derived robot-frame AD direction: "
-        f"{math.degrees(geometry.ad_angle_rad):.3f} deg from +Ox"
-    )
+    print(f"  q: {args.angle_deg:.3f} deg")
+
     for name in ("A", "B", "C", "D", "H", "O"):
-        x, y = display_pose.point(name)
+        x, y = pose.point(name)
         print(f"  {name}: ({x:.3f}, {y:.3f}) mm")
+
     print(
-        "  dO/dalpha: "
-        f"({display_jacobian.d_o[0]:.3f}, "
-        f"{display_jacobian.d_o[1]:.3f}) mm/rad"
+        "  dO/dq: "
+        f"({jacobian.d_o[0]:.3f}, "
+        f"{jacobian.d_o[1]:.3f}) mm/rad"
     )
 
     if args.plot:
+        import matplotlib.pyplot as plt
+
         from duk_core.visualization import (
             draw_leg_linkage,
             draw_point_trajectories,
             plot_point_coordinates,
             plot_point_jacobian,
         )
-        import matplotlib.pyplot as plt
 
         margin = math.radians(2.0)
         poses = sample_leg_trajectory(
@@ -120,42 +107,31 @@ def main() -> None:
             lower + margin,
             upper - margin,
             180,
-            assembly_branch=branch,
         )
-        if args.frame == "robot":
-            display_poses = tuple(
-                pose_in_robot_frame(geometry, sampled_pose)
-                for sampled_pose in poses
-            )
-            jacobian_rotation = geometry.solver_to_robot_rotation_rad
-        else:
-            display_poses = poses
-            jacobian_rotation = 0.0
 
         draw_leg_linkage(
-            display_pose,
+            pose,
             geometry,
         ).set_title(
-            f"DUK leg linkage — {frame_label}"
+            f"DUK leg linkage — q={args.angle_deg:.1f}°"
         )
         draw_point_trajectories(
-            display_poses
+            poses
         ).set_title(
-            f"DUK linkage point trajectories — {args.frame} frame"
+            "DUK linkage point trajectories — canonical robot frame"
         )
         plot_point_coordinates(
-            display_poses,
+            poses,
             "O",
         ).set_title(
-            f"Wheel-center coordinates — {args.frame} frame"
+            "Wheel-center coordinates vs q"
         )
         plot_point_jacobian(
             geometry,
             poses,
             "O",
-            rotation_rad=jacobian_rotation,
         ).set_title(
-            f"Wheel-center Jacobian — {args.frame} frame"
+            "Wheel-center Jacobian dO/dq"
         )
         plt.show()
 

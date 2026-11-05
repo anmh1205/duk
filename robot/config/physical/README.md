@@ -1,68 +1,96 @@
 # Physical Configuration
 
-This directory owns measured, CAD-derived or otherwise established physical parameters used by DUK software models.
+This directory owns established physical dimensions, frame conventions and topology for DUK software models.
 
-## Planar leg frame convention
+## Canonical planar robot frame
 
-The planar leg model uses two different frames for two different purposes. They must not be merged or corrected ad hoc in visualization code.
+The planar leg uses one physical coordinate frame:
 
-### Robot frame
+- origin: point A;
+- +Ox points right;
+- +Oy points up;
+- positive rotation is counter-clockwise;
+- directed D→A angle is -30° from +Ox.
 
-The robot-frame convention is:
-
-- (+O_x): right;
-- (+O_y): up;
-- positive rotation: counter-clockwise;
-- planar origin for the current leg model: point A;
-- reference directed vector: **D→A**;
-- directed angle of D→A from (+O_x): **-30°**.
-
-Therefore D is above A.
-
-Because A→D is the opposite directed vector,
+Only point A is fixed numerically:
 
 [
-	heta_{AD}=	heta_{DA}+180^circ=150^circ.
+A=(0,0).
 ]
 
-The configuration stores only the primary physical statement, `da_angle_deg = -30`. Software derives the A→D direction from it.
+No solved coordinate for B, C, D, H or O is stored in configuration.
 
-### Solver frame
+## Geometry equations
 
-The four-bar numerical solver uses:
+The opposite directed-link angle is derived:
 
-- A = (0, 0);
-- D = (AD, 0);
-- local +x aligned with A→D;
-- positive rotation counter-clockwise.
+[
+	heta_{AD}=	heta_{DA}+pi.
+]
 
-This solver frame is chosen only to simplify loop closure. It is transformed into the robot frame by rotating by the derived A→D angle, currently +150°.
+Point D is therefore:
 
-No separate 90° display correction and no independent AD-orientation parameter are part of the model.
+[
+D=A+AD
+egin{bmatrix}
+cos	heta_{AD}\
+sin	heta_{AD}
+end{bmatrix}.
+]
 
-## Current leg geometry source
+The one-degree-of-freedom linkage coordinate is (q), defined as the directed counter-clockwise angle from (overrightarrow{AB}) to (overrightarrow{DA}):
 
-`duk_leg_geometry.json` contains the established linkage lengths, the rigid BCO wheel-carrier geometry, wheel radius, robot-frame convention and the physical four-bar assembly branch. The CAD reference establishes `assembly_branch = -1`: in this branch B→C has the same topology as the mechanical assembly and the H/O wheel-center construction lies on the wheel side of the linkage. The opposite branch remains available only as a mathematical comparison override.
+[
+q=angle(overrightarrow{AB},overrightarrow{DA}).
+]
 
+Hence:
+
+[
+	heta_{AB}=	heta_{DA}-q
+]
+
+and:
+
+[
+B=A+AB
+egin{bmatrix}
+cos	heta_{AB}\
+sin	heta_{AB}
+end{bmatrix}.
+]
+
+Point C is not stored. It is the physical intersection of:
+
+- the circle centered at B with radius BC;
+- the circle centered at D with radius CD.
+
+The physical intersection is selected by named topology: B is on the configured side of directed A→D and C is on the configured side of directed B→D. Numeric branch signs are an implementation detail, not physical configuration.
 
 ## Rigid BCO wheel carrier
 
-B, C and O are not three independently solved points. They are fixed material points of one rigid carrier link.
+B, C and O are fixed material points on one rigid carrier. H is an auxiliary construction point.
 
-The configuration groups that geometry under `bco_rigid_body`:
-
-- (BC = 42) mm;
-- (BH = 119) mm;
-- (OH = 55) mm;
-- `wheel_side = -1`.
-
-With a body-fixed frame at B whose +x axis points B→C and whose +y axis is the left normal of B→C:
+For every solved pose:
 
 [
-B=(0,0),qquad
-C=(BC,0),qquad
-H=(-BH,0),qquad
-O=(-BH,;wheel_sidecdot OH).
+mathbf e_{BC}=rac{C-B}{BC}
 ]
 
-Therefore the triangle side lengths (BC), (BO) and (CO), plus its signed area/orientation, are invariant through all motion. H is only a construction point; it is not a mechanical joint or additional degree of freedom.
+[
+H=B-BH,mathbf e_{BC}
+]
+
+and, using the unit normal (mathbf n_{BC}) on the configured physical side of B→C,
+
+[
+O=H+OH,mathbf n_{BC}.
+]
+
+Therefore BC, BO, CO and the signed B-C-O area remain invariant through motion.
+
+## Model boundary
+
+The physical config stores dimensions and relations, not corrected coordinates. There is no display-time mirror, solver-frame rotation, or post-solution point correction in the canonical model.
+
+The coordinate (q) is currently a geometric linkage coordinate. It is not yet declared to be a calibrated motor encoder angle.

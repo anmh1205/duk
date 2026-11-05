@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "units": {
     "length": "mm",
     "angle": "deg"
@@ -9,11 +9,15 @@
     "CD": 135,
     "AD": 81
   },
+  "four_bar_assembly": {
+    "b_side_of_directed_ad": "left",
+    "c_side_of_directed_bd": "left"
+  },
   "bco_rigid_body": {
     "BC_mm": 42,
     "BH_mm": 119,
     "OH_mm": 55,
-    "wheel_side": -1
+    "o_side_of_directed_bc": "left"
   },
   "wheel_mm": {
     "diameter": 150,
@@ -27,16 +31,15 @@
     "reference_vector": "DA",
     "da_angle_deg": -30
   },
-  "assembly_branch": -1,
   "notes": [
-    "B, C and O are fixed material points on one rigid BCO wheel-carrier link; their pairwise distances BC, BO and CO are invariant for every mechanism pose.",
-    "H is an auxiliary construction point fixed in the same BCO body frame; H, B and C are collinear in the order H-B-C.",
-    "In the BCO body frame, B=(0,0), C=(BC,0), H=(-BH,0), and O=(-BH, wheel_side*OH).",
-    "The local BCO +x axis points from B to C; local +y is the left normal of B->C. wheel_side=-1 places O on the established CAD side of the carrier.",
-    "Robot-frame angles are directed angles measured from +Ox; counter-clockwise is positive.",
-    "The directed vector D->A has angle -30 degrees in the robot frame, so D is higher than A.",
-    "The opposite directed vector A->D therefore has angle +150 degrees in the robot frame.",
-    "The four-bar solver uses a local solver frame with A=(0,0) and A->D aligned with +x; solver outputs are rotated by the derived A->D angle when transformed into the robot frame.",
-    "The physical four-bar assembly branch is -1, verified against the supplied CAD reference."
+    "A is the only fixed robot-frame point: A=(0,0). All other points are derived from lengths, directed angles, topology and the current linkage configuration.",
+    "The directed vector D->A has angle -30 degrees from +Ox; therefore A->D is the opposite direction.",
+    "The linkage configuration q is the directed counter-clockwise angle from A->B to D->A. Therefore theta_AB = theta_DA - q.",
+    "Point D is derived from A, AD and theta_AD. Point B is derived from A, AB and theta_AB.",
+    "Point C is selected from the intersection of the circle centered at B with radius BC and the circle centered at D with radius CD, using the configured physical side of directed B->D.",
+    "B, C and O are fixed material points of one rigid wheel-carrier body.",
+    "H and O are derived from the moving B->C basis: e_BC=(C-B)/BC, H=B-BH*e_BC, and O=H+OH*n_BC on the configured side of B->C.",
+    "H is an auxiliary construction point, not a joint or degree of freedom.",
+    "No mirror, solver-frame rotation, display correction, or fixed coordinates for B/C/D/H/O are part of the physical model."
   ]
 }
