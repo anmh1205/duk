@@ -1,68 +1,55 @@
 # Physical Configuration
 
-This directory owns measured, CAD-derived or otherwise established physical parameters used by DUK software models.
+This directory owns established physical parameters and topology for DUK software models.
 
-## Planar leg frame convention
+## Canonical planar robot frame
 
-The planar leg model uses two different frames for two different purposes. They must not be merged or corrected ad hoc in visualization code.
+The leg model uses one physical coordinate frame:
 
-### Robot frame
+- origin: point A;
+- +Ox points right;
+- +Oy points up;
+- positive rotation is counter-clockwise;
+- directed D→A angle is -30° from +Ox.
 
-The robot-frame convention is:
+Only point A is fixed numerically:
 
-- (+O_x): right;
-- (+O_y): up;
-- positive rotation: counter-clockwise;
-- planar origin for the current leg model: point A;
-- reference directed vector: **D→A**;
-- directed angle of D→A from (+O_x): **-30°**.
+A = (0, 0).
 
-Therefore D is above A.
+All other points are derived.
 
-Because A→D is the opposite directed vector,
+Point D is computed from AD and the derived direction A→D:
 
-[
-	heta_{AD}=	heta_{DA}+180^circ=150^circ.
-]
+theta_AD = theta_DA + 180° = 150°,
 
-The configuration stores only the primary physical statement, `da_angle_deg = -30`. Software derives the A→D direction from it.
+D = A + AD [cos(theta_AD), sin(theta_AD)].
 
-### Solver frame
+Point B is computed from the current absolute A→B angle alpha:
 
-The four-bar numerical solver uses:
+B = A + AB [cos(alpha), sin(alpha)].
 
-- A = (0, 0);
-- D = (AD, 0);
-- local +x aligned with A→D;
-- positive rotation counter-clockwise.
+Point C is the physical intersection of the circle centered at B with radius BC and the circle centered at D with radius CD. The physical topology is expressed by named sidedness, not a numeric branch sign:
 
-This solver frame is chosen only to simplify loop closure. It is transformed into the robot frame by rotating by the derived A→D angle, currently +150°.
+- B lies on the right side of directed A→D;
+- C lies on the right side of directed B→D.
 
-No separate 90° display correction and no independent AD-orientation parameter are part of the model.
-
-## Current leg geometry source
-
-`duk_leg_geometry.json` contains the established linkage lengths, the rigid BCO wheel-carrier geometry, wheel radius, robot-frame convention and the physical four-bar assembly branch. The CAD reference establishes `assembly_branch = -1`: in this branch B→C has the same topology as the mechanical assembly and the H/O wheel-center construction lies on the wheel side of the linkage. The opposite branch remains available only as a mathematical comparison override.
-
+There is no solver-frame-to-robot-frame rotation, display-time mirror or post-solution coordinate correction.
 
 ## Rigid BCO wheel carrier
 
-B, C and O are not three independently solved points. They are fixed material points of one rigid carrier link.
+B, C and O are fixed material points on one rigid carrier. H is an auxiliary construction point.
 
-The configuration groups that geometry under `bco_rigid_body`:
+The physical configuration stores:
 
-- (BC = 42) mm;
-- (BH = 119) mm;
-- (OH = 55) mm;
-- `wheel_side = -1`.
+- BC = 42 mm;
+- BH = 119 mm;
+- OH = 55 mm;
+- O lies on the left side of directed B→C.
 
-With a body-fixed frame at B whose +x axis points B→C and whose +y axis is the left normal of B→C:
+For every solved pose, the B→C unit vector is derived from B and C. Then H and O are computed from that moving rigid-body basis. Therefore BC, BO, CO and the signed B-C-O triangle area remain invariant through motion.
 
-[
-B=(0,0),qquad
-C=(BC,0),qquad
-H=(-BH,0),qquad
-O=(-BH,;wheel_sidecdot OH).
-]
+## Configuration variable
 
-Therefore the triangle side lengths (BC), (BO) and (CO), plus its signed area/orientation, are invariant through all motion. H is only a construction point; it is not a mechanical joint or additional degree of freedom.
+The current kinematic coordinate is the absolute directed angle of A→B measured from robot +Ox. It is a geometric coordinate only; it is not yet declared to be a calibrated motor encoder angle.
+
+duk_leg_geometry.json stores dimensions, frame convention and named topology. It does not store solved B/C/D/H/O coordinates.
