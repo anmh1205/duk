@@ -4,7 +4,7 @@
 
 ## Implemented foundation
 
-The core now models the established planar leg/wheel geometry rather than a generic serial-chain placeholder.
+The core models the established planar leg/wheel geometry rather than a generic serial-chain approximation.
 
 | Area | Current scope |
 | --- | --- |
@@ -12,43 +12,83 @@ The core now models the established planar leg/wheel geometry rather than a gene
 | `src/duk_core/modeling/mass_properties.py` | Mass-weighted center of mass, parallel-axis pitch inertia and an equivalent-pendulum reduction for later balance modeling |
 | `src/duk_core/visualization/leg_linkage.py` | Optional Matplotlib drawing of the mechanism, point trajectories, coordinate curves and Jacobian curves |
 | `examples/duk_leg_kinematics.py` | Numerical inspection of the current DUK leg geometry; plotting is optional |
-| `tests/` | Geometry invariants, both four-bar branches, workspace limits, analytic Jacobian verification and mass-property tests |
+| `tests/` | Geometry invariants, both four-bar branches, workspace limits, analytic Jacobian verification and robot-frame convention tests |
 | `notebooks/` | Interactive investigations that call the reusable core API rather than reimplementing equations |
 
-The physical geometry values are stored in [`robot/config/physical/duk_leg_geometry.json`](../../config/physical/duk_leg_geometry.json). The configuration records AB = 131 mm, BC = 42 mm, CD = 135 mm, AD = 81 mm, BH = 119 mm, OH = 55 mm, wheel radius 75 mm and AD sketch orientation 30 degrees.
+The physical geometry source is [`robot/config/physical/duk_leg_geometry.json`](../../config/physical/duk_leg_geometry.json). It records AB = 131 mm, BC = 42 mm, CD = 135 mm, AD = 81 mm, BH = 119 mm, OH = 55 mm and wheel radius 75 mm.
 
-`assembly_branch` is intentionally unset in the physical configuration. The link lengths admit two circle-intersection branches; the branch used by the actual CAD assembly must be verified before a branch is treated as physical truth. The example therefore selects a branch explicitly for calculation.
+`assembly_branch` remains intentionally unset. The link lengths admit two circle-intersection branches; the physical CAD branch must be verified before either branch is treated as robot truth.
 
-## Geometry convention
+## Coordinate-frame convention
 
-For loop closure, the model uses a local A-D frame with `A=(0,0)` and `D=(AD,0)`. The input angle is measured from A->D to A->B. After B and C are solved, H and O are constructed from the established local B-xy geometry:
+Two frames have distinct responsibilities.
 
-- H, B and C are collinear in the order H-B-C.
-- BH is 119 mm opposite B->C.
-- OH is 55 mm perpendicular to BC.
-- local +y points opposite O, represented by `wheel_side=-1` relative to the left normal of B->C.
+### Solver frame
 
-The configured AD orientation is a frame transform; it is not added to the linkage input angle during loop closure. In the current DUK robot/sketch frame, +Ox is horizontal and AD is oriented **+30 degrees counter-clockwise from +Ox**. Examples, notebooks and plots use this robot/sketch frame by default; the local A-D frame remains available for solver-level debugging.
+The four-bar loop is solved in a local numerical frame:
+
+- A = (0, 0);
+- D = (AD, 0);
+- local +x is the directed vector A→D;
+- positive rotation is counter-clockwise;
+- the input angle is measured from A→D to A→B.
+
+This frame exists to keep the loop-closure equations simple. It does not define how the mechanism is mounted in the robot.
+
+### Robot frame
+
+Robot-facing coordinates use one explicit directed-vector convention:
+
+- +Ox points right;
+- +Oy points up;
+- positive rotation is counter-clockwise;
+- A is used as the current planar mechanism origin;
+- the directed vector **D→A has angle -30° from +Ox**.
+
+Because A→D is the opposite directed vector,
+
+[
+\theta_{AD}=\theta_{DA}+180^\circ=-30^\circ+180^\circ=150^\circ.
+]
+
+Therefore the solver-to-robot rotation is **+150°**, not +30°. This gives D a greater y-coordinate than A, matching the physical statement that D is higher than A.
+
+The configuration stores the primary physical statement `da_angle_deg = -30`. Code derives the A→D angle from it; the derived 150° value is not duplicated in configuration.
+
+The wheel-center construction remains:
+
+- H, B and C are collinear in the order H-B-C;
+- BH = 119 mm opposite B→C;
+- OH = 55 mm perpendicular to BC;
+- `wheel_side=-1` selects the established side of directed BC.
 
 ## Run
 
-Install and run the numerical example:
+Inside the DUK development container:
 
 ```bash
-python -m pip install -e './robot/software/core[test]'
 python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1
-# Optional solver-frame inspection:
-python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1 --frame local
 python -m pytest -q robot/software/core/tests
 ```
 
-For plots and notebooks:
+Robot frame is the default output frame. For solver-level debugging only:
 
 ```bash
-python -m pip install -e './robot/software/core[research]'
-python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1 --plot
+python robot/software/core/examples/duk_leg_kinematics.py \
+  --angle-deg 75 \
+  --branch 1 \
+  --frame solver
 ```
 
-The model deliberately does **not** invent DUK masses, inertias, actuator limits or controller gains. `mass_properties.py` accepts future CAD-derived or measured values so the same kinematic model can feed the equivalent-pendulum, LQR and whole-body-control work without duplicating geometry equations.
+For Matplotlib windows:
+
+```bash
+python robot/software/core/examples/duk_leg_kinematics.py \
+  --angle-deg 75 \
+  --branch 1 \
+  --plot
+```
+
+The model deliberately does **not** invent DUK masses, inertias, actuator limits or controller gains. `mass_properties.py` accepts future CAD-derived or measured values so the same kinematic model can feed balance dynamics and controller design without duplicating geometry equations.
 
 [Core documentation](../../../docs/software/core.md) · [Repository layout](../../../docs/architecture/repository-layout.md).

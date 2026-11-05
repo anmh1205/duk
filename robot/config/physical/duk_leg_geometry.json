@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "units": {
     "length": "mm",
     "angle": "deg"
@@ -19,13 +19,22 @@
     "diameter": 150,
     "radius": 75
   },
-  "ad_orientation_deg": 30,
+  "robot_frame": {
+    "origin": "A",
+    "x_axis": "+Ox points right",
+    "y_axis": "+Oy points up",
+    "positive_rotation": "counter_clockwise",
+    "reference_vector": "DA",
+    "da_angle_deg": -30
+  },
   "assembly_branch": null,
   "notes": [
     "H, B, C are collinear in the order H-B-C.",
     "The local B-x axis points from B to C; local +y points opposite wheel center O.",
-    "In the configured robot/sketch frame, AD is oriented +30 degrees counter-clockwise from +Ox.",
-    "The four-bar solver uses a local A-D frame; ad_orientation_deg is applied only when transforming results into the robot/sketch frame.",
+    "Robot-frame angles are directed angles measured from +Ox; counter-clockwise is positive.",
+    "The directed vector D->A has angle -30 degrees in the robot frame, so D is higher than A.",
+    "The opposite directed vector A->D therefore has angle +150 degrees in the robot frame.",
+    "The four-bar solver uses a local solver frame with A=(0,0) and A->D aligned with +x; solver outputs are rotated by the derived A->D angle when transformed into the robot frame.",
     "assembly_branch remains unset until the CAD assembly branch is explicitly verified."
   ]
 }
