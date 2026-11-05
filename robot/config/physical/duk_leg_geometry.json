@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "units": {
     "length": "mm",
     "angle": "deg"
@@ -9,11 +9,15 @@
     "CD": 135,
     "AD": 81
   },
+  "four_bar_assembly": {
+    "b_side_of_directed_ad": "right",
+    "c_side_of_directed_bd": "left"
+  },
   "bco_rigid_body": {
     "BC_mm": 42,
     "BH_mm": 119,
     "OH_mm": 55,
-    "wheel_side": -1
+    "o_side_of_directed_bc": "left"
   },
   "wheel_mm": {
     "diameter": 150,
@@ -27,16 +31,13 @@
     "reference_vector": "DA",
     "da_angle_deg": -30
   },
-  "assembly_branch": -1,
   "notes": [
-    "B, C and O are fixed material points on one rigid BCO wheel-carrier link; their pairwise distances BC, BO and CO are invariant for every mechanism pose.",
-    "H is an auxiliary construction point fixed in the same BCO body frame; H, B and C are collinear in the order H-B-C.",
-    "In the BCO body frame, B=(0,0), C=(BC,0), H=(-BH,0), and O=(-BH, wheel_side*OH).",
-    "The local BCO +x axis points from B to C; local +y is the left normal of B->C. wheel_side=-1 places O on the established CAD side of the carrier.",
-    "Robot-frame angles are directed angles measured from +Ox; counter-clockwise is positive.",
-    "The directed vector D->A has angle -30 degrees in the robot frame, so D is higher than A.",
-    "The opposite directed vector A->D therefore has angle +150 degrees in the robot frame.",
-    "The four-bar solver uses a local solver frame with A=(0,0) and A->D aligned with +x; solver outputs are rotated by the derived A->D angle when transformed into the robot frame.",
-    "The physical four-bar assembly branch is -1, verified against the supplied CAD reference."
+    "A, B, C, D, H and O are solved directly in the canonical robot frame; no display-time mirror or solver-to-robot rotation is part of the physical model.",
+    "The directed vector D->A has angle -30 degrees from +Ox, so A->D has angle +150 degrees and D is higher than A.",
+    "The pose variable ab_angle is the directed angle of A->B measured directly from robot +Ox; it is a geometric coordinate, not yet a calibrated motor encoder angle.",
+    "The physical four-bar topology places B on the right side of directed A->D and C on the left side of directed B->D.",
+    "B, C and O are fixed material points of one rigid wheel-carrier body.",
+    "In the BCO body frame, B=(0,0), C=(BC,0), H=(-BH,0), and O lies on the configured side of directed B->C at perpendicular distance OH.",
+    "H is an auxiliary construction point, not a joint or degree of freedom."
   ]
 }
