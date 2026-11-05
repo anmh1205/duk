@@ -37,7 +37,7 @@
     "The pose variable ab_angle is the directed angle of A->B measured directly from robot +Ox; it is a geometric coordinate, not yet a calibrated motor encoder angle.",
     "The physical four-bar topology places B on the right side of directed A->D and C on the right side of directed B->D.",
     "B, C and O are fixed material points of one rigid wheel-carrier body.",
-    "In the BCO body frame, B=(0,0), C=(BC,0), H=(-BH,0), and O lies on the configured side of directed B->C at perpendicular distance OH.",
+    "H and O are derived from the moving B->C basis: e_BC=(C-B)/BC, H=B-BH*e_BC, and O=H+OH*n_BC on the configured side of B->C.",
     "H is an auxiliary construction point, not a joint or degree of freedom."
   ]
 }
