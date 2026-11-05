@@ -62,8 +62,9 @@ class LegGeometry:
     """Immutable DUK leg geometry and robot-frame orientation.
 
     da_angle_rad is the directed angle of D->A measured from robot +Ox.
-    Solver loop closure is orientation-independent; robot orientation is
-    applied only when transforming solver results into the robot frame.
+    assembly_branch identifies the CAD-matching physical circle-intersection
+    branch. Solver loop closure is orientation-independent; robot orientation
+    is applied only when transforming solver results into the robot frame.
     """
 
     ab_mm: float
@@ -228,7 +229,11 @@ def _resolve_branch(
     assembly_branch: int | None,
 ) -> int:
     """Use an explicit branch override or the physical branch from config."""
-    branch = geometry.assembly_branch if assembly_branch is None else assembly_branch
+    branch = (
+        geometry.assembly_branch
+        if assembly_branch is None
+        else assembly_branch
+    )
     _validate_branch(branch)
     return branch
 
