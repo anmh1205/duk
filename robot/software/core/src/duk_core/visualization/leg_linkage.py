@@ -30,22 +30,50 @@ def draw_leg_linkage(
     *,
     show_wheel: bool = True,
     show_auxiliary: bool = True,
+    show_rigid_carrier: bool = True,
     annotate: bool = True,
 ):
-    """Draw the closed four-bar, BH/OH construction, and wheel at one pose."""
+    """Draw one DUK leg pose with the rigid B-C-O carrier made explicit."""
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
 
-    chain = (pose.a, pose.b, pose.c, pose.d, pose.a)
-    xs, ys = zip(*chain)
-    ax.plot(xs, ys, "o-")
+    # AB, CD and DA are ordinary four-bar links. BC belongs to the rigid
+    # B-C-O wheel-carrier body and is drawn as an edge of that triangle below.
+    ax.plot(
+        (pose.a[0], pose.b[0]),
+        (pose.a[1], pose.b[1]),
+        "o-",
+    )
+    ax.plot(
+        (pose.c[0], pose.d[0], pose.a[0]),
+        (pose.c[1], pose.d[1], pose.a[1]),
+        "o-",
+    )
+
+    if show_rigid_carrier:
+        from matplotlib.patches import Polygon
+
+        carrier = Polygon(
+            pose.bco_triangle,
+            closed=True,
+            fill=True,
+            alpha=0.12,
+        )
+        ax.add_patch(carrier)
+        carrier_chain = (*pose.bco_triangle, pose.b)
+        xs, ys = zip(*carrier_chain)
+        ax.plot(xs, ys, "o-", linewidth=2.0)
+    else:
+        ax.plot(
+            (pose.b[0], pose.c[0]),
+            (pose.b[1], pose.c[1]),
+            "o-",
+        )
 
     if show_auxiliary:
         ax.plot((pose.h[0], pose.b[0]), (pose.h[1], pose.b[1]), "--")
         ax.plot((pose.h[0], pose.o[0]), (pose.h[1], pose.o[1]), "--")
-        ax.plot((pose.b[0], pose.o[0]), (pose.b[1], pose.o[1]), ":")
-        ax.plot((pose.c[0], pose.o[0]), (pose.c[1], pose.o[1]), ":")
 
     if show_wheel:
         from matplotlib.patches import Circle
@@ -122,7 +150,7 @@ def plot_point_jacobian(
 
     Poses stay in the local A-D solver frame. The resulting derivative vectors
     are then rotated by rotation_rad for display in another frame, such as the
-    configured DUK standing/sketch frame.
+    configured DUK robot frame.
     """
     if not poses:
         raise ValueError("poses must not be empty")
