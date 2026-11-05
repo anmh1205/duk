@@ -147,14 +147,6 @@ class BCORigidBodyGeometry:
             * self.oh_mm
         )
 
-    @property
-    def o_from_b_local_mm(self) -> Point2:
-        """O in carrier coordinates with B origin and +x along B->C."""
-        return (
-            -self.bh_mm,
-            _side_sign(self.o_side_of_bc) * self.oh_mm,
-        )
-
     def place_from_bc(
         self,
         b: Point2,
