@@ -38,7 +38,7 @@ def main() -> None:
         "--frame",
         choices=("robot", "local"),
         default="robot",
-        help="display/output frame; robot keeps AD at configured +30 deg from +Ox",
+        help="display/output frame; robot applies configured AD orientation from +Ox",
     )
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
@@ -57,7 +57,10 @@ def main() -> None:
     if args.frame == "robot":
         display_pose = robot_pose
         display_jacobian = robot_jacobian
-        frame_label = "robot/sketch frame (AD = +30 deg from +Ox)"
+        frame_label = (
+            "robot/sketch frame "
+            f"(AD = {math.degrees(geometry.ad_orientation_rad):+.1f} deg from +Ox)"
+        )
     else:
         display_pose = pose
         display_jacobian = jacobian
