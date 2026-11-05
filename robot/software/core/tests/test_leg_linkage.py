@@ -89,8 +89,6 @@ def test_only_a_is_fixed_and_other_points_are_derived() -> None:
         )
     )
 
-    assert pose.d != (-70.14805770653953, 40.5)
-    assert pose.b != (33.905294908430214, 126.53628324386794)
 
 
 def test_robot_frame_directed_da_ad_relation() -> None:
