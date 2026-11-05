@@ -6,7 +6,7 @@ The robotics core is the ROS-independent source of reusable numerical models and
 
 ## Implemented model boundary
 
-The current implementation covers the planar closed four-bar leg geometry and the wheel-center offset defined by BH/OH. It provides loop closure, explicit assembly-branch selection, workspace limits, singularity detection, analytic point Jacobians, trajectory sampling and coordinate-frame transforms. It also provides generic planar mass-property composition so future CAD-derived masses/inertias can be converted into a center of mass and equivalent-pendulum representation without inventing values.
+The current implementation covers the planar closed four-bar leg geometry and the wheel-center offset defined by BH/OH. It provides loop closure, explicit assembly-branch selection, workspace limits, singularity detection, analytic point Jacobians, trajectory sampling and coordinate-frame transforms. The solver uses a local A-D frame, while the configured robot/sketch frame rotates results so AD is +30 degrees counter-clockwise from +Ox; visualization and notebooks use that standing frame by default. It also provides generic planar mass-property composition so future CAD-derived masses/inertias can be converted into a center of mass and equivalent-pendulum representation without inventing values.
 
 Physical geometry values are owned by `robot/config/physical/duk_leg_geometry.json`. The core does not embed unresolved assembly-branch choices, masses, inertias, actuator limits, controller gains or contact parameters.
 
@@ -16,7 +16,14 @@ Physical geometry values are owned by `robot/config/physical/duk_leg_geometry.js
 physical geometry configuration
         |
         v
-closed four-bar kinematics ----> point/Jacobian trajectories ----> visualization
+closed four-bar kinematics ----> local A-D pose/Jacobian
+                                      |
+                                      v
+                           robot/sketch transform
+                         (AD = +30 deg from +Ox)
+                                      |
+                                      v
+                         trajectories / visualization
         |
         v
 CAD/measured mass properties
