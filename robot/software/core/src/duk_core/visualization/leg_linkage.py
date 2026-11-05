@@ -126,11 +126,11 @@ def plot_point_coordinates(
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
-    angles = [math.degrees(pose.ab_angle_rad) for pose in poses]
+    angles = [math.degrees(pose.linkage_angle_rad) for pose in poses]
     points = [pose.point(point_name) for pose in poses]
     ax.plot(angles, [point[0] for point in points], label=f"{point_name}.x")
     ax.plot(angles, [point[1] for point in points], label=f"{point_name}.y")
-    ax.set_xlabel("A→B angle from +Ox (deg)")
+    ax.set_xlabel("linkage angle q = angle(AB→DA) (deg)")
     ax.set_ylabel("coordinate (mm)")
     ax.grid(True)
     ax.legend()
@@ -149,7 +149,7 @@ def plot_point_jacobian(
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
-    angles = [math.degrees(pose.ab_angle_rad) for pose in poses]
+    angles = [math.degrees(pose.linkage_angle_rad) for pose in poses]
     derivatives = [
         leg_jacobian(geometry, pose).point(point_name)
         for pose in poses
@@ -157,14 +157,14 @@ def plot_point_jacobian(
     ax.plot(
         angles,
         [value[0] for value in derivatives],
-        label=f"d{point_name}.x/dα",
+        label=f"d{point_name}.x/dq",
     )
     ax.plot(
         angles,
         [value[1] for value in derivatives],
-        label=f"d{point_name}.y/dα",
+        label=f"d{point_name}.y/dq",
     )
-    ax.set_xlabel("input angle (deg)")
+    ax.set_xlabel("linkage angle q (deg)")
     ax.set_ylabel("Jacobian component (mm/rad)")
     ax.grid(True)
     ax.legend()
