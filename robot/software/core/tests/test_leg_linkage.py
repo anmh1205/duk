@@ -49,6 +49,10 @@ def sub(a, b):
     return a[0] - b[0], a[1] - b[1]
 
 
+def cross(a, b):
+    return a[0] * b[1] - a[1] * b[0]
+
+
 def test_config_defines_physical_assembly_branch() -> None:
     data = json.loads(
         CONFIG_PATH.read_text(
@@ -98,6 +102,80 @@ def test_derived_wheel_center_distances() -> None:
     assert g.co_mm == pytest.approx(
         170.1352403
     )
+
+
+def test_config_declares_bco_as_one_rigid_body() -> None:
+    data = json.loads(
+        CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
+    )
+    assert data["schema_version"] == 3
+    assert "BC" not in data["links_mm"]
+    assert data["bco_rigid_body_mm"] == {
+        "BC": 42,
+        "BH": 119,
+        "OH": 55,
+        "wheel_side": -1,
+    }
+
+
+def test_bco_rigid_triangle_invariants_hold_over_motion() -> None:
+    g = geometry()
+    lower, upper = g.geometric_angle_limits_rad()
+    margin = math.radians(2.0)
+    poses = sample_leg_trajectory(
+        g,
+        lower + margin,
+        upper - margin,
+        41,
+    )
+
+    expected_area2 = g.bco_body.signed_double_area_mm2
+    for pose in poses:
+        assert distance(pose.b, pose.c) == pytest.approx(
+            g.bc_mm,
+            abs=1e-8,
+        )
+        assert distance(pose.b, pose.o) == pytest.approx(
+            g.bo_mm,
+            abs=1e-8,
+        )
+        assert distance(pose.c, pose.o) == pytest.approx(
+            g.co_mm,
+            abs=1e-8,
+        )
+
+        b_to_c = sub(pose.c, pose.b)
+        b_to_o = sub(pose.o, pose.b)
+        assert cross(
+            b_to_c,
+            b_to_o,
+        ) == pytest.approx(
+            expected_area2,
+            abs=1e-7,
+        )
+
+
+def test_bco_rigid_body_velocity_constraints_hold() -> None:
+    g = geometry()
+    pose = solve_leg_pose(
+        g,
+        math.radians(75.0),
+    )
+    jac = leg_jacobian(g, pose)
+
+    r_bc = sub(pose.c, pose.b)
+    r_bo = sub(pose.o, pose.b)
+    r_co = sub(pose.o, pose.c)
+
+    v_bc = sub(jac.d_c, jac.d_b)
+    v_bo = sub(jac.d_o, jac.d_b)
+    v_co = sub(jac.d_o, jac.d_c)
+
+    assert dot(r_bc, v_bc) == pytest.approx(0.0, abs=1e-7)
+    assert dot(r_bo, v_bo) == pytest.approx(0.0, abs=1e-7)
+    assert dot(r_co, v_co) == pytest.approx(0.0, abs=1e-7)
 
 
 @pytest.mark.parametrize(
