@@ -646,7 +646,7 @@ def geometry_from_mapping(
         )
 
     links = data["links_mm"]
-    bco = data["bco_rigid_body_mm"]
+    bco = data["bco_rigid_body"]
     wheel = data["wheel_mm"]
     robot_frame = data["robot_frame"]
 
@@ -673,9 +673,9 @@ def geometry_from_mapping(
         cd_mm=float(links["CD"]),
         ad_mm=float(links["AD"]),
         bco_body=BCORigidBodyGeometry(
-            bc_mm=float(bco["BC"]),
-            bh_mm=float(bco["BH"]),
-            oh_mm=float(bco["OH"]),
+            bc_mm=float(bco["BC_mm"]),
+            bh_mm=float(bco["BH_mm"]),
+            oh_mm=float(bco["OH_mm"]),
             wheel_side=int(bco["wheel_side"]),
         ),
         wheel_radius_mm=radius,
