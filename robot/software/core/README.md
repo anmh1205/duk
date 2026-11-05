@@ -28,7 +28,7 @@ For loop closure, the model uses a local A-D frame with `A=(0,0)` and `D=(AD,0)`
 - OH is 55 mm perpendicular to BC.
 - local +y points opposite O, represented by `wheel_side=-1` relative to the left normal of B->C.
 
-The configured AD orientation is a frame transform; it is not added to the linkage input angle during loop closure.
+The configured AD orientation is a frame transform; it is not added to the linkage input angle during loop closure. In the current DUK robot/sketch frame, +Ox is horizontal and AD is oriented **+30 degrees counter-clockwise from +Ox**. Examples, notebooks and plots use this robot/sketch frame by default; the local A-D frame remains available for solver-level debugging.
 
 ## Run
 
@@ -37,6 +37,8 @@ Install and run the numerical example:
 ```bash
 python -m pip install -e './robot/software/core[test]'
 python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1
+# Optional solver-frame inspection:
+python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1 --frame local
 python -m pytest -q robot/software/core/tests
 ```
 
