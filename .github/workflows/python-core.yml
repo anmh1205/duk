@@ -41,6 +41,6 @@ jobs:
       - name: Run unit tests
         run: python -m pytest -q robot/software/core/tests
       - name: Run DUK leg-kinematics example
-        run: python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1
+        run: python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75
       - name: Compile Python sources
         run: python -m compileall -q robot/software/core/src
