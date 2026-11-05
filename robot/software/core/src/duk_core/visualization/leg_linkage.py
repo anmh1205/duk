@@ -9,7 +9,6 @@ from duk_core.modeling.leg_linkage import (
     LegGeometry,
     LegPose,
     leg_jacobian,
-    transform_vector,
 )
 
 
@@ -127,11 +126,11 @@ def plot_point_coordinates(
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
-    angles = [math.degrees(pose.input_angle_rad) for pose in poses]
+    angles = [math.degrees(pose.ab_angle_rad) for pose in poses]
     points = [pose.point(point_name) for pose in poses]
     ax.plot(angles, [point[0] for point in points], label=f"{point_name}.x")
     ax.plot(angles, [point[1] for point in points], label=f"{point_name}.y")
-    ax.set_xlabel("input angle (deg)")
+    ax.set_xlabel("A→B angle from +Ox (deg)")
     ax.set_ylabel("coordinate (mm)")
     ax.grid(True)
     ax.legend()
@@ -143,26 +142,16 @@ def plot_point_jacobian(
     poses: Sequence[LegPose],
     point_name: str = "O",
     ax=None,
-    *,
-    rotation_rad: float = 0.0,
 ):
-    """Plot analytic point Jacobian components in the requested frame.
-
-    Poses stay in the local A-D solver frame. The resulting derivative vectors
-    are then rotated by rotation_rad for display in another frame, such as the
-    configured DUK robot frame.
-    """
+    """Plot analytic point Jacobian components in canonical robot coordinates."""
     if not poses:
         raise ValueError("poses must not be empty")
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
-    angles = [math.degrees(pose.input_angle_rad) for pose in poses]
+    angles = [math.degrees(pose.ab_angle_rad) for pose in poses]
     derivatives = [
-        transform_vector(
-            leg_jacobian(geometry, pose).point(point_name),
-            rotation_rad,
-        )
+        leg_jacobian(geometry, pose).point(point_name)
         for pose in poses
     ]
     ax.plot(
