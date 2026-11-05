@@ -11,7 +11,7 @@
   },
   "four_bar_assembly": {
     "b_side_of_directed_ad": "right",
-    "c_side_of_directed_bd": "left"
+    "c_side_of_directed_bd": "right"
   },
   "bco_rigid_body": {
     "BC_mm": 42,
@@ -35,7 +35,7 @@
     "A, B, C, D, H and O are solved directly in the canonical robot frame; no display-time mirror or solver-to-robot rotation is part of the physical model.",
     "The directed vector D->A has angle -30 degrees from +Ox, so A->D has angle +150 degrees and D is higher than A.",
     "The pose variable ab_angle is the directed angle of A->B measured directly from robot +Ox; it is a geometric coordinate, not yet a calibrated motor encoder angle.",
-    "The physical four-bar topology places B on the right side of directed A->D and C on the left side of directed B->D.",
+    "The physical four-bar topology places B on the right side of directed A->D and C on the right side of directed B->D.",
     "B, C and O are fixed material points of one rigid wheel-carrier body.",
     "In the BCO body frame, B=(0,0), C=(BC,0), H=(-BH,0), and O lies on the configured side of directed B->C at perpendicular distance OH.",
     "H is an auxiliary construction point, not a joint or degree of freedom."
