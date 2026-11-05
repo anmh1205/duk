@@ -112,10 +112,10 @@ def test_config_declares_bco_as_one_rigid_body() -> None:
     )
     assert data["schema_version"] == 3
     assert "BC" not in data["links_mm"]
-    assert data["bco_rigid_body_mm"] == {
-        "BC": 42,
-        "BH": 119,
-        "OH": 55,
+    assert data["bco_rigid_body"] == {
+        "BC_mm": 42,
+        "BH_mm": 119,
+        "OH_mm": 55,
         "wheel_side": -1,
     }
 
