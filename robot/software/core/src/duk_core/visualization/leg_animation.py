@@ -22,6 +22,19 @@ from duk_core.modeling.leg_linkage import (
 )
 
 
+@dataclass(slots=True)
+class LegAnimation:
+    """Container for an animation and the solved poses that drive it."""
+
+    animation: object
+    figure: object
+    poses: tuple[LegPose, ...]
+
+    def to_jshtml(self) -> str:
+        """Render the animation as an interactive Jupyter HTML player."""
+        return self.animation.to_jshtml()  # type: ignore[attr-defined]
+
+
 @dataclass(frozen=True, slots=True)
 class LegAnimationOptions:
     """Presentation options for a DUK leg animation."""
@@ -311,6 +324,8 @@ def create_leg_animation(
         blit=False,
     )
 
-    # Expose solved poses for inspection without recomputing the motion.
-    animation.duk_poses = poses  # type: ignore[attr-defined]
-    return animation
+    return LegAnimation(
+        animation=animation,
+        figure=ax.figure,
+        poses=poses,
+    )
