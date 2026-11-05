@@ -88,9 +88,18 @@ B, C and O are fixed material points on one rigid carrier. H is auxiliary. BC, B
 - `robot/config/physical/README.md`
 - `robot/software/core/src/duk_core/modeling/leg_linkage.py`
 - `robot/software/core/src/duk_core/visualization/leg_linkage.py`
+- `robot/software/core/src/duk_core/visualization/leg_animation.py`
 - `robot/software/core/examples/duk_leg_kinematics.py`
 - `robot/software/core/notebooks/kinematics/duk-leg-kinematics.ipynb`
 - `robot/software/core/notebooks/motion/duk-leg-motion.ipynb`
+- `robot/software/core/examples/duk_leg_motion.py`
 - `robot/software/core/tests/`
 
 The next layers should reuse this model for inverse kinematics, two-leg coordination, body leveling and later dynamics instead of creating alternate coordinate conventions.
+
+
+## Motion visualization boundary
+
+Real-time motion uses Matplotlib `FuncAnimation`. The animation layer receives a sequence of linkage coordinates, solves each pose through the canonical model, and only updates drawing artists. It never reimplements four-bar closure or rigid BCO geometry.
+
+The motion notebook embeds the animation as JSHTML, providing play/pause and timeline scrubbing in VS Code/Jupyter without requiring ffmpeg. Historical trails are opt-in; the default view displays one moving mechanism pose at a time.
