@@ -194,19 +194,21 @@ def create_leg_animation(
         linewidth=2.2,
     )
 
+    auxiliary_label_bh = "BH" if options.show_auxiliary else "_nolegend_"
+    auxiliary_label_ho = "OH" if options.show_auxiliary else "_nolegend_"
     (line_bh,) = ax.plot(
         [],
         [],
         "--",
         linewidth=1.2,
-        label="BH",
+        label=auxiliary_label_bh,
     )
     (line_ho,) = ax.plot(
         [],
         [],
         "--",
         linewidth=1.2,
-        label="OH",
+        label=auxiliary_label_ho,
     )
     if not options.show_auxiliary:
         line_bh.set_visible(False)
@@ -221,12 +223,13 @@ def create_leg_animation(
     ax.add_patch(wheel)
 
     # Motion history is optional and disabled by default.
+    trace_label = "O trace" if options.show_wheel_trace else "_nolegend_"
     (wheel_trace,) = ax.plot(
         [],
         [],
         linewidth=1.0,
         alpha=0.65,
-        label="O trace",
+        label=trace_label,
     )
     wheel_trace.set_visible(options.show_wheel_trace)
 
@@ -287,6 +290,11 @@ def create_leg_animation(
         wheel.center = pose.o
 
         if options.show_wheel_trace:
+            # Repeating animations start a fresh trail each cycle instead of
+            # accumulating points indefinitely.
+            if frame_index == 0:
+                trace_x.clear()
+                trace_y.clear()
             trace_x.append(pose.o[0])
             trace_y.append(pose.o[1])
             wheel_trace.set_data(trace_x, trace_y)
