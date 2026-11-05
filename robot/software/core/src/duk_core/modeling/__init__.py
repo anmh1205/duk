@@ -1,6 +1,7 @@
 """Mathematical models and geometric helpers for DUK."""
 
 from .leg_linkage import (
+    BCORigidBodyGeometry,
     KinematicSingularityError,
     LegGeometry,
     LegJacobian,
@@ -28,6 +29,7 @@ from .mass_properties import (
 )
 
 __all__ = [
+    "BCORigidBodyGeometry",
     "CombinedMassProperties",
     "EquivalentPendulum2D",
     "KinematicSingularityError",

@@ -8,12 +8,12 @@ The core models the established planar leg/wheel geometry rather than a generic 
 
 | Area | Current scope |
 | --- | --- |
-| `src/duk_core/modeling/leg_linkage.py` | Closed four-bar kinematics, assembly branches, H/O wheel-center construction, geometric workspace, analytic Jacobian, point trajectories and frame transforms |
+| `src/duk_core/modeling/leg_linkage.py` | Closed four-bar kinematics, explicit rigid BCO wheel-carrier geometry, physical/mirror assembly branches, workspace, analytic Jacobian, trajectories and frame transforms |
 | `src/duk_core/modeling/mass_properties.py` | Mass-weighted center of mass, parallel-axis pitch inertia and an equivalent-pendulum reduction for later balance modeling |
 | `src/duk_core/visualization/leg_linkage.py` | Optional Matplotlib drawing of the mechanism, point trajectories, coordinate curves and Jacobian curves |
 | `examples/duk_leg_kinematics.py` | Numerical inspection of the current DUK leg geometry; plotting is optional |
 | `tests/` | Geometry invariants, both four-bar branches, workspace limits, analytic Jacobian verification and robot-frame convention tests |
-| `notebooks/` | Interactive investigations that call the reusable core API rather than reimplementing equations |
+| `notebooks/` | Interactive investigations that call the reusable core API rather than reimplementing equations; includes kinematics and motion workbenches |
 
 The physical geometry source is [`robot/config/physical/duk_leg_geometry.json`](../../config/physical/duk_leg_geometry.json). It records AB = 131 mm, BC = 42 mm, CD = 135 mm, AD = 81 mm, BH = 119 mm, OH = 55 mm and wheel radius 75 mm.
 
@@ -55,12 +55,7 @@ Therefore the solver-to-robot rotation is **+150°**, not +30°. This gives D a 
 
 The configuration stores the primary physical statement `da_angle_deg = -30`. Code derives the A→D angle from it; the derived 150° value is not duplicated in configuration.
 
-The wheel-center construction remains:
-
-- H, B and C are collinear in the order H-B-C;
-- BH = 119 mm opposite B→C;
-- OH = 55 mm perpendicular to BC;
-- `wheel_side=-1` selects the established side of directed BC.
+`B`, `C` and `O` form one rigid wheel-carrier body. In its body-fixed B→C frame, B=(0,0), C=(42,0), H=(-119,0), and O=(-119,-55) mm. Thus BC, BO, CO and the carrier orientation are rigid invariants; H is only an auxiliary construction point.
 
 ## Run
 
@@ -90,3 +85,12 @@ python robot/software/core/examples/duk_leg_kinematics.py \
 The model deliberately does **not** invent DUK masses, inertias, actuator limits or controller gains. `mass_properties.py` accepts future CAD-derived or measured values so the same kinematic model can feed balance dynamics and controller design without duplicating geometry equations.
 
 [Core documentation](../../../docs/software/core.md) · [Repository layout](../../../docs/architecture/repository-layout.md).
+
+
+## Motion workbench
+
+The motion notebook is:
+
+`robot/software/core/notebooks/motion/duk-leg-motion.ipynb`
+
+It sweeps the physical branch through its geometric workspace, visualizes the rigid BCO carrier over multiple poses, verifies BC/BO/CO invariants numerically, plots wheel-center/anchor-height motion and Jacobian transmission, and demonstrates a smooth time-domain kinematic input. It is intentionally kinematic; it does not invent actuator limits, contact forces or controller dynamics.

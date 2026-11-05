@@ -6,7 +6,7 @@ The robotics core is the ROS-independent source of reusable numerical models and
 
 ## Implemented model boundary
 
-The current implementation covers the closed planar four-bar geometry and the wheel-center offset defined by BH/OH. It provides loop closure, explicit assembly-branch selection, workspace limits, singularity detection, analytic point Jacobians, trajectory sampling and rigid frame transforms.
+The current implementation covers the closed planar four-bar geometry and an explicit rigid BCO wheel-carrier body defined by BC/BH/OH. It provides loop closure, explicit assembly-branch selection, workspace limits, singularity detection, analytic point Jacobians, trajectory sampling and rigid frame transforms.
 
 The implementation deliberately separates the **solver frame** from the **robot frame**.
 
@@ -52,6 +52,9 @@ physical geometry + directed DA convention
    robot-frame pose / trajectories / Jacobian
                 |
                 v
+   rigid BCO invariants: BC / BO / CO / area
+                |
+                v
        CAD/measured mass properties
                 |
                 v
@@ -72,6 +75,7 @@ physical geometry + directed DA convention
 - `robot/software/core/src/duk_core/visualization/leg_linkage.py`
 - `robot/software/core/examples/duk_leg_kinematics.py`
 - `robot/software/core/notebooks/kinematics/duk-leg-kinematics.ipynb`
+- `robot/software/core/notebooks/motion/duk-leg-motion.ipynb`
 - `robot/software/core/tests/`
 
 The next modeling layer should derive configuration-dependent balance dynamics from these same geometry and frame primitives rather than introducing a second independent robot model.
