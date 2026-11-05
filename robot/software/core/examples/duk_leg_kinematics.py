@@ -1,4 +1,4 @@
-"""Inspect the DUK leg directly in canonical robot coordinates."""
+"""Inspect DUK leg geometry directly in canonical robot coordinates."""
 
 from __future__ import annotations
 
@@ -29,7 +29,10 @@ def main() -> None:
         "--angle-deg",
         type=float,
         default=75.0,
-        help="absolute A->B angle measured counter-clockwise from robot +Ox",
+        help=(
+            "linkage coordinate q in degrees; q is the directed "
+            "counter-clockwise angle from A->B to D->A"
+        ),
     )
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
@@ -37,29 +40,36 @@ def main() -> None:
     geometry = load_leg_geometry_json(
         repository_geometry_path()
     )
-    pose = solve_leg_pose(
-        geometry,
-        math.radians(args.angle_deg),
-    )
+    q = math.radians(args.angle_deg)
+    pose = solve_leg_pose(geometry, q)
     jacobian = leg_jacobian(geometry, pose)
-    lower, upper = geometry.geometric_ab_angle_limits_rad()
+    lower, upper = (
+        geometry.geometric_linkage_angle_limits_rad()
+    )
 
     print("DUK leg geometry")
     print("  frame: canonical robot frame")
-    print("  A is the only fixed coordinate: (0, 0) mm")
+    print("  A = (0, 0) mm")
     print(
         "  DA direction: "
-        f"{math.degrees(geometry.da_angle_rad):+.3f} deg from +Ox"
+        f"{math.degrees(geometry.da_angle_rad):+.3f} deg"
     )
     print(
         "  AD direction: "
-        f"{math.degrees(geometry.ad_angle_rad):+.3f} deg from +Ox"
+        f"{math.degrees(geometry.ad_angle_rad):+.3f} deg"
     )
     print(
-        "  physical A->B angle range: "
+        "  q definition: directed CCW angle from A->B to D->A"
+    )
+    print(
+        "  geometric q range: "
         f"{math.degrees(lower):.3f} .. "
         f"{math.degrees(upper):.3f} deg "
         "(singular boundaries, not operating limits)"
+    )
+    print(
+        "  derived A->B direction: "
+        f"{math.degrees(geometry.ab_angle_rad(q)):+.3f} deg"
     )
     print(f"  BO derived: {geometry.bo_mm:.3f} mm")
     print(f"  CO derived: {geometry.co_mm:.3f} mm")
@@ -69,24 +79,27 @@ def main() -> None:
         f"C is {geometry.c_side_of_bd} of B->D, "
         f"O is {geometry.bco_body.o_side_of_bc} of B->C"
     )
-    print(f"  A->B angle: {args.angle_deg:.3f} deg")
+    print(f"  q: {args.angle_deg:.3f} deg")
+
     for name in ("A", "B", "C", "D", "H", "O"):
         x, y = pose.point(name)
         print(f"  {name}: ({x:.3f}, {y:.3f}) mm")
+
     print(
-        "  dO/d(A->B angle): "
+        "  dO/dq: "
         f"({jacobian.d_o[0]:.3f}, "
         f"{jacobian.d_o[1]:.3f}) mm/rad"
     )
 
     if args.plot:
+        import matplotlib.pyplot as plt
+
         from duk_core.visualization import (
             draw_leg_linkage,
             draw_point_trajectories,
             plot_point_coordinates,
             plot_point_jacobian,
         )
-        import matplotlib.pyplot as plt
 
         margin = math.radians(2.0)
         poses = sample_leg_trajectory(
@@ -100,7 +113,7 @@ def main() -> None:
             pose,
             geometry,
         ).set_title(
-            f"DUK leg linkage — A→B={args.angle_deg:.1f}°"
+            f"DUK leg linkage — q={args.angle_deg:.1f}°"
         )
         draw_point_trajectories(
             poses
@@ -111,14 +124,14 @@ def main() -> None:
             poses,
             "O",
         ).set_title(
-            "Wheel-center coordinates — canonical robot frame"
+            "Wheel-center coordinates vs q"
         )
         plot_point_jacobian(
             geometry,
             poses,
             "O",
         ).set_title(
-            "Wheel-center Jacobian — canonical robot frame"
+            "Wheel-center Jacobian dO/dq"
         )
         plt.show()
 
