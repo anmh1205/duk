@@ -24,7 +24,7 @@ The opposite directed vector is therefore:
 
 The solver-to-robot transform is consequently a +150° rotation. Pose coordinates, trajectory plots and robot-frame Jacobians all use this same transform. No separate 30°, 90° or presentation-only correction is inserted elsewhere.
 
-Physical geometry values and frame convention are owned by `robot/config/physical/duk_leg_geometry.json`. The core does not embed unresolved assembly-branch choices, masses, inertias, actuator limits, controller gains or contact parameters.
+Physical geometry values, frame convention and the CAD-matching physical assembly branch are owned by `robot/config/physical/duk_leg_geometry.json`. The current physical branch is `-1`; the mirror `+1` solution remains available only as an explicit mathematical override. The core does not invent masses, inertias, actuator limits, controller gains or contact parameters.
 
 ## Model flow
 
@@ -33,6 +33,9 @@ physical geometry + directed DA convention
                 |
                 v
       solver frame: A->D = +x
+                |
+                v
+ physical assembly branch = -1
                 |
                 v
       closed four-bar kinematics

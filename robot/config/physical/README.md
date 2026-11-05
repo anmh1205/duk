@@ -42,4 +42,4 @@ No separate 90° display correction and no independent AD-orientation parameter 
 
 ## Current leg geometry source
 
-`duk_leg_geometry.json` contains the established linkage lengths, wheel-center offsets, wheel radius and the robot-frame convention. Unresolved values such as the physical four-bar assembly branch remain explicitly unset rather than being guessed.
+`duk_leg_geometry.json` contains the established linkage lengths, wheel-center offsets, wheel radius, robot-frame convention and the physical four-bar assembly branch. The CAD reference establishes `assembly_branch = -1`: in this branch B→C has the same topology as the mechanical assembly and the H/O wheel-center construction lies on the wheel side of the linkage. The opposite branch remains available only as a mathematical comparison override.

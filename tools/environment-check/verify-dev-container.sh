@@ -122,7 +122,6 @@ if [[ "${mode}" == "--full" ]]; then
     cd "${repo_root}"
     python robot/software/core/examples/duk_leg_kinematics.py \
       --angle-deg 75 \
-      --branch 1 \
       >/dev/null
 
     python -m pytest -q -p no:cacheprovider robot/software/core/tests

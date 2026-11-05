@@ -82,8 +82,8 @@ Because the Compose project name includes the ROS distro, Jazzy and Humble use s
 Inside either container workflow:
 
 ```bash
-python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1
+python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75
 python -m pytest -q robot/software/core/tests
 ```
 
-The branch argument in this example selects a mathematical assembly branch for inspection; the physical CAD branch remains a separate item to verify.
+The example uses the physical assembly branch from `robot/config/physical/duk_leg_geometry.json` (`-1`). Use `--branch 1` only when intentionally inspecting the mirror mathematical solution.

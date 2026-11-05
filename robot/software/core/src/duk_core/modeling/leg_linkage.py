@@ -62,8 +62,9 @@ class LegGeometry:
     """Immutable DUK leg geometry and robot-frame orientation.
 
     da_angle_rad is the directed angle of D->A measured from robot +Ox.
-    Solver loop closure is orientation-independent; robot orientation is
-    applied only when transforming solver results into the robot frame.
+    assembly_branch identifies the CAD-matching physical circle-intersection
+    branch. Solver loop closure is orientation-independent; robot orientation
+    is applied only when transforming solver results into the robot frame.
     """
 
     ab_mm: float
@@ -74,6 +75,7 @@ class LegGeometry:
     oh_mm: float
     wheel_radius_mm: float
     da_angle_rad: float
+    assembly_branch: int
     wheel_side: int = -1
 
     def __post_init__(self) -> None:
@@ -92,6 +94,7 @@ class LegGeometry:
             )
         if not math.isfinite(self.da_angle_rad):
             raise ValueError("da_angle_rad must be finite")
+        _validate_branch(self.assembly_branch)
         if self.wheel_side not in (-1, 1):
             raise ValueError("wheel_side must be either -1 or +1")
 
@@ -221,20 +224,34 @@ def _validate_branch(assembly_branch: int) -> None:
         raise ValueError("assembly_branch must be either -1 or +1")
 
 
+def _resolve_branch(
+    geometry: LegGeometry,
+    assembly_branch: int | None,
+) -> int:
+    """Use an explicit branch override or the physical branch from config."""
+    branch = (
+        geometry.assembly_branch
+        if assembly_branch is None
+        else assembly_branch
+    )
+    _validate_branch(branch)
+    return branch
+
+
 def solve_leg_pose(
     geometry: LegGeometry,
     input_angle_rad: float,
     *,
-    assembly_branch: int,
+    assembly_branch: int | None = None,
     tolerance_mm: float = 1e-9,
 ) -> LegPose:
     """Solve A/B/C/D/H/O for one input angle.
 
-    ``assembly_branch`` selects one of the two circle-intersection solutions
-    for C. It is deliberately mandatory: link lengths alone do not identify
-    which physical assembly branch is used by CAD.
+    ``assembly_branch`` optionally overrides the physical branch loaded from
+    configuration. If omitted, ``geometry.assembly_branch`` is used. Explicit
+    overrides remain useful for comparing the two mathematical solutions.
     """
-    _validate_branch(assembly_branch)
+    branch = _resolve_branch(geometry, assembly_branch)
     if not math.isfinite(input_angle_rad):
         raise ValueError("input_angle_rad must be finite")
     if not math.isfinite(tolerance_mm) or tolerance_mm <= 0.0:
@@ -279,7 +296,7 @@ def solve_leg_pose(
         b,
         _add(
             _scale(along, ex),
-            _scale(assembly_branch * height, ey),
+            _scale(branch * height, ey),
         ),
     )
 
@@ -297,7 +314,7 @@ def solve_leg_pose(
 
     return LegPose(
         input_angle_rad=input_angle_rad,
-        assembly_branch=assembly_branch,
+        assembly_branch=branch,
         a=a,
         b=b,
         c=c,
@@ -378,10 +395,10 @@ def sample_leg_trajectory(
     end_angle_rad: float,
     sample_count: int,
     *,
-    assembly_branch: int,
+    assembly_branch: int | None = None,
 ) -> tuple[LegPose, ...]:
     """Sample a continuous input-angle sweep, including both endpoints."""
-    _validate_branch(assembly_branch)
+    branch = _resolve_branch(geometry, assembly_branch)
     if sample_count < 2:
         raise ValueError("sample_count must be at least 2")
     if (
@@ -395,7 +412,7 @@ def sample_leg_trajectory(
         solve_leg_pose(
             geometry,
             start_angle_rad + index * step,
-            assembly_branch=assembly_branch,
+            assembly_branch=branch,
         )
         for index in range(sample_count)
     )
@@ -555,6 +572,7 @@ def geometry_from_mapping(
         da_angle_rad=math.radians(
             float(robot_frame["da_angle_deg"])
         ),
+        assembly_branch=int(data["assembly_branch"]),
         wheel_side=int(wheel_offset["wheel_side"]),
     )
 
