@@ -5,25 +5,27 @@
     "angle": "deg"
   },
   "links_mm": {
-    "AB": 131.0,
-    "BC": 42.0,
-    "CD": 135.0,
-    "AD": 81.0
+    "AB": 131,
+    "BC": 42,
+    "CD": 135,
+    "AD": 81
   },
   "wheel_center_offset_mm": {
-    "BH": 119.0,
-    "OH": 55.0,
+    "BH": 119,
+    "OH": 55,
     "wheel_side": -1
   },
   "wheel_mm": {
-    "diameter": 150.0,
-    "radius": 75.0
+    "diameter": 150,
+    "radius": 75
   },
-  "ad_orientation_deg": 30.0,
+  "ad_orientation_deg": 30,
   "assembly_branch": null,
   "notes": [
     "H, B, C are collinear in the order H-B-C.",
     "The local B-x axis points from B to C; local +y points opposite wheel center O.",
+    "In the configured robot/sketch frame, AD is oriented +30 degrees counter-clockwise from +Ox.",
+    "The four-bar solver uses a local A-D frame; ad_orientation_deg is applied only when transforming results into the robot/sketch frame.",
     "assembly_branch remains unset until the CAD assembly branch is explicitly verified."
   ]
 }

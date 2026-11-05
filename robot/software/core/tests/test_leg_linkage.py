@@ -11,6 +11,7 @@ import pytest
 from duk_core.modeling import (
     KinematicSingularityError,
     UnreachableConfigurationError,
+    jacobian_in_sketch_frame,
     leg_jacobian,
     load_leg_geometry_json,
     pose_in_sketch_frame,
@@ -305,4 +306,52 @@ def test_trajectory_sampling_and_sketch_rotation() -> None:
     )
     assert sketch.d == pytest.approx(
         expected_d
+    )
+    ad_vector = sub(sketch.d, sketch.a)
+    ad_angle = math.atan2(ad_vector[1], ad_vector[0])
+    assert math.degrees(ad_angle) == pytest.approx(30.0)
+
+
+def test_sketch_frame_jacobian_matches_transformed_numeric_derivative() -> None:
+    g = geometry()
+    alpha = math.radians(75.0)
+    local_pose = solve_leg_pose(
+        g,
+        alpha,
+        assembly_branch=1,
+    )
+    local_jacobian = leg_jacobian(
+        g,
+        local_pose,
+    )
+    robot_jacobian = jacobian_in_sketch_frame(
+        g,
+        local_jacobian,
+    )
+
+    step = 1e-6
+    plus = pose_in_sketch_frame(
+        g,
+        solve_leg_pose(
+            g,
+            alpha + step,
+            assembly_branch=1,
+        ),
+    ).o
+    minus = pose_in_sketch_frame(
+        g,
+        solve_leg_pose(
+            g,
+            alpha - step,
+            assembly_branch=1,
+        ),
+    ).o
+    numeric = (
+        (plus[0] - minus[0]) / (2 * step),
+        (plus[1] - minus[1]) / (2 * step),
+    )
+    assert robot_jacobian.d_o == pytest.approx(
+        numeric,
+        rel=1e-7,
+        abs=1e-7,
     )

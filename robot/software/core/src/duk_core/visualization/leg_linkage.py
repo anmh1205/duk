@@ -5,7 +5,12 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
-from duk_core.modeling.leg_linkage import LegGeometry, LegPose, leg_jacobian
+from duk_core.modeling.leg_linkage import (
+    LegGeometry,
+    LegPose,
+    leg_jacobian,
+    transform_vector,
+)
 
 
 def _plt():
@@ -110,15 +115,28 @@ def plot_point_jacobian(
     poses: Sequence[LegPose],
     point_name: str = "O",
     ax=None,
+    *,
+    rotation_rad: float = 0.0,
 ):
-    """Plot analytic d(point)/d(input angle) components over a pose sweep."""
+    """Plot analytic point Jacobian components in the requested frame.
+
+    Poses stay in the local A-D solver frame. The resulting derivative vectors
+    are then rotated by rotation_rad for display in another frame, such as the
+    configured DUK standing/sketch frame.
+    """
     if not poses:
         raise ValueError("poses must not be empty")
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
     angles = [math.degrees(pose.input_angle_rad) for pose in poses]
-    derivatives = [leg_jacobian(geometry, pose).point(point_name) for pose in poses]
+    derivatives = [
+        transform_vector(
+            leg_jacobian(geometry, pose).point(point_name),
+            rotation_rad,
+        )
+        for pose in poses
+    ]
     ax.plot(
         angles,
         [value[0] for value in derivatives],
