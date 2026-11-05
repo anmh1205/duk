@@ -18,8 +18,11 @@ The physical DUK convention is angle(D->A, +Ox) = -30 deg. The opposite
 vector A->D is therefore +150 deg. That derived A->D angle is exactly the
 rotation from the solver frame into the robot frame.
 
-The wheel-center construction keeps H, B and C collinear in the order H-B-C,
-with BH opposite B->C and OH perpendicular to BC.
+B, C and O are fixed material points on one rigid BCO wheel-carrier body.
+H is an auxiliary construction point in that same body frame. In local BCO
+coordinates, B=(0,0), C=(BC,0), H=(-BH,0), and
+O=(-BH, wheel_side*OH). Therefore BC, BO, CO and the signed triangle area are
+invariant for every mechanism pose.
 
 All lengths are millimetres. Public API angle values are radians; JSON
 configuration angles use the declared degree unit.
@@ -35,7 +38,7 @@ from typing import Any, Mapping
 
 Point2 = tuple[float, float]
 
-LEG_GEOMETRY_SCHEMA_VERSION = 2
+LEG_GEOMETRY_SCHEMA_VERSION = 3
 ROBOT_FRAME_CONVENTION = {
     "origin": "A",
     "x_axis": "+Ox points right",
@@ -58,45 +61,164 @@ class KinematicSingularityError(LinkageError):
 
 
 @dataclass(frozen=True, slots=True)
-class LegGeometry:
-    """Immutable DUK leg geometry and robot-frame orientation.
+class BCORigidBodyGeometry:
+    """Geometry of the rigid B-C-O wheel-carrier link.
 
-    da_angle_rad is the directed angle of D->A measured from robot +Ox.
-    assembly_branch identifies the CAD-matching physical circle-intersection
-    branch. Solver loop closure is orientation-independent; robot orientation
-    is applied only when transforming solver results into the robot frame.
+    B and C are revolute-joint locations on one rigid body; O is the wheel
+    axle center fixed to that same body. H is only an auxiliary construction
+    point used to express O in the B->C body frame.
     """
 
-    ab_mm: float
     bc_mm: float
-    cd_mm: float
-    ad_mm: float
     bh_mm: float
     oh_mm: float
+    wheel_side: int
+
+    def __post_init__(self) -> None:
+        lengths = (self.bc_mm, self.bh_mm, self.oh_mm)
+        if not all(math.isfinite(v) and v > 0.0 for v in lengths):
+            raise ValueError(
+                "BC, BH and OH must be finite and positive"
+            )
+        if self.wheel_side not in (-1, 1):
+            raise ValueError("wheel_side must be either -1 or +1")
+
+    @property
+    def bo_mm(self) -> float:
+        """Invariant B-to-O distance of the rigid carrier."""
+        return math.hypot(self.bh_mm, self.oh_mm)
+
+    @property
+    def co_mm(self) -> float:
+        """Invariant C-to-O distance of the rigid carrier."""
+        return math.hypot(
+            self.bh_mm + self.bc_mm,
+            self.oh_mm,
+        )
+
+    @property
+    def signed_double_area_mm2(self) -> float:
+        """Signed 2x area of triangle B-C-O in the carrier convention."""
+        return (
+            self.bc_mm
+            * self.wheel_side
+            * self.oh_mm
+        )
+
+    @property
+    def o_from_b_local_mm(self) -> Point2:
+        """O coordinates in the rigid body frame with B origin and +x=B->C."""
+        return (
+            -self.bh_mm,
+            self.wheel_side * self.oh_mm,
+        )
+
+    def place_from_bc(
+        self,
+        b: Point2,
+        c: Point2,
+        *,
+        tolerance_mm: float = 1e-8,
+    ) -> tuple[Point2, Point2, Point2, Point2]:
+        """Place H and O from B/C while preserving the rigid BCO geometry."""
+        bc_vector = _sub(c, b)
+        bc_length = _norm(bc_vector)
+        if not math.isclose(
+            bc_length,
+            self.bc_mm,
+            rel_tol=0.0,
+            abs_tol=tolerance_mm,
+        ):
+            raise LinkageError(
+                "B-C distance violates rigid BCO carrier geometry: "
+                f"{bc_length:.9g} mm != {self.bc_mm:.9g} mm"
+            )
+
+        e_bc = _scale(
+            1.0 / self.bc_mm,
+            bc_vector,
+        )
+        left_normal_bc = _left_normal(e_bc)
+        h = _sub(
+            b,
+            _scale(self.bh_mm, e_bc),
+        )
+        o = _add(
+            h,
+            _scale(
+                self.wheel_side * self.oh_mm,
+                left_normal_bc,
+            ),
+        )
+        return h, o, e_bc, left_normal_bc
+
+    def point_derivatives(
+        self,
+        d_b: Point2,
+        d_c: Point2,
+    ) -> tuple[Point2, Point2]:
+        """Return dH and dO for the rigid carrier from dB and dC."""
+        d_e_bc = _scale(
+            1.0 / self.bc_mm,
+            _sub(d_c, d_b),
+        )
+        d_left_normal = _left_normal(d_e_bc)
+        d_h = _sub(
+            d_b,
+            _scale(self.bh_mm, d_e_bc),
+        )
+        d_o = _add(
+            d_h,
+            _scale(
+                self.wheel_side * self.oh_mm,
+                d_left_normal,
+            ),
+        )
+        return d_h, d_o
+
+
+@dataclass(frozen=True, slots=True)
+class LegGeometry:
+    """Immutable DUK leg geometry and robot-frame orientation."""
+
+    ab_mm: float
+    cd_mm: float
+    ad_mm: float
+    bco_body: BCORigidBodyGeometry
     wheel_radius_mm: float
     da_angle_rad: float
     assembly_branch: int
-    wheel_side: int = -1
 
     def __post_init__(self) -> None:
         values = (
             self.ab_mm,
-            self.bc_mm,
             self.cd_mm,
             self.ad_mm,
-            self.bh_mm,
-            self.oh_mm,
             self.wheel_radius_mm,
         )
         if not all(math.isfinite(v) and v > 0.0 for v in values):
             raise ValueError(
-                "all geometry lengths and wheel radius must be finite and positive"
+                "link lengths and wheel radius must be finite and positive"
             )
         if not math.isfinite(self.da_angle_rad):
             raise ValueError("da_angle_rad must be finite")
         _validate_branch(self.assembly_branch)
-        if self.wheel_side not in (-1, 1):
-            raise ValueError("wheel_side must be either -1 or +1")
+
+    @property
+    def bc_mm(self) -> float:
+        return self.bco_body.bc_mm
+
+    @property
+    def bh_mm(self) -> float:
+        return self.bco_body.bh_mm
+
+    @property
+    def oh_mm(self) -> float:
+        return self.bco_body.oh_mm
+
+    @property
+    def wheel_side(self) -> int:
+        return self.bco_body.wheel_side
 
     @property
     def wheel_diameter_mm(self) -> float:
@@ -114,13 +236,11 @@ class LegGeometry:
 
     @property
     def bo_mm(self) -> float:
-        """Derived direct B-to-wheel-center distance."""
-        return math.hypot(self.bh_mm, self.oh_mm)
+        return self.bco_body.bo_mm
 
     @property
     def co_mm(self) -> float:
-        """Derived direct C-to-wheel-center distance."""
-        return math.hypot(self.bh_mm + self.bc_mm, self.oh_mm)
+        return self.bco_body.co_mm
 
     def geometric_angle_limits_rad(self) -> tuple[float, float]:
         """Return four-bar existence limits for input angles in [0, pi].
@@ -172,6 +292,11 @@ class LegPose:
         if key not in {"a", "b", "c", "d", "h", "o"}:
             raise KeyError(f"unknown linkage point: {name}")
         return getattr(self, key)
+
+    @property
+    def bco_triangle(self) -> tuple[Point2, Point2, Point2]:
+        """Rigid carrier triangle vertices in B-C-O order."""
+        return self.b, self.c, self.o
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,16 +425,10 @@ def solve_leg_pose(
         ),
     )
 
-    bc_vector = _sub(c, b)
-    bc_length = _norm(bc_vector)
-    if bc_length <= tolerance_mm:
-        raise KinematicSingularityError("B and C coincide")
-    e_bc = _scale(1.0 / bc_length, bc_vector)
-    left_normal_bc = _left_normal(e_bc)
-    h = _sub(b, _scale(geometry.bh_mm, e_bc))
-    o = _add(
-        h,
-        _scale(geometry.wheel_side * geometry.oh_mm, left_normal_bc),
+    h, o, e_bc, left_normal_bc = geometry.bco_body.place_from_bc(
+        b,
+        c,
+        tolerance_mm=max(tolerance_mm, 1e-8),
     )
 
     return LegPose(
@@ -365,21 +484,9 @@ def leg_jacobian(
         rhs * r_dc[1] / determinant,
         -rhs * r_dc[0] / determinant,
     )
-    d_e_bc = _scale(
-        1.0 / geometry.bc_mm,
-        _sub(d_c, d_b),
-    )
-    d_left_normal = _left_normal(d_e_bc)
-    d_h = _sub(
+    d_h, d_o = geometry.bco_body.point_derivatives(
         d_b,
-        _scale(geometry.bh_mm, d_e_bc),
-    )
-    d_o = _add(
-        d_h,
-        _scale(
-            geometry.wheel_side * geometry.oh_mm,
-            d_left_normal,
-        ),
+        d_c,
     )
     return LegJacobian(
         d_b=d_b,
@@ -539,7 +646,7 @@ def geometry_from_mapping(
         )
 
     links = data["links_mm"]
-    wheel_offset = data["wheel_center_offset_mm"]
+    bco = data["bco_rigid_body_mm"]
     wheel = data["wheel_mm"]
     robot_frame = data["robot_frame"]
 
@@ -563,17 +670,19 @@ def geometry_from_mapping(
 
     return LegGeometry(
         ab_mm=float(links["AB"]),
-        bc_mm=float(links["BC"]),
         cd_mm=float(links["CD"]),
         ad_mm=float(links["AD"]),
-        bh_mm=float(wheel_offset["BH"]),
-        oh_mm=float(wheel_offset["OH"]),
+        bco_body=BCORigidBodyGeometry(
+            bc_mm=float(bco["BC"]),
+            bh_mm=float(bco["BH"]),
+            oh_mm=float(bco["OH"]),
+            wheel_side=int(bco["wheel_side"]),
+        ),
         wheel_radius_mm=radius,
         da_angle_rad=math.radians(
             float(robot_frame["da_angle_deg"])
         ),
         assembly_branch=int(data["assembly_branch"]),
-        wheel_side=int(wheel_offset["wheel_side"]),
     )
 
 
