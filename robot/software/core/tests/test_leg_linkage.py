@@ -11,10 +11,10 @@ import pytest
 from duk_core.modeling import (
     KinematicSingularityError,
     UnreachableConfigurationError,
-    jacobian_in_sketch_frame,
+    jacobian_in_robot_frame,
     leg_jacobian,
     load_leg_geometry_json,
-    pose_in_sketch_frame,
+    pose_in_robot_frame,
     sample_leg_trajectory,
     solve_leg_pose,
 )
@@ -56,6 +56,31 @@ def test_config_keeps_assembly_branch_explicitly_unresolved() -> None:
         )
     )
     assert data["assembly_branch"] is None
+
+
+def test_robot_frame_configuration_is_explicit_and_directed() -> None:
+    data = json.loads(
+        CONFIG_PATH.read_text(
+            encoding="utf-8"
+        )
+    )
+    frame = data["robot_frame"]
+    assert frame == {
+        "origin": "A",
+        "x_axis": "+Ox points right",
+        "y_axis": "+Oy points up",
+        "positive_rotation": "counter_clockwise",
+        "reference_vector": "DA",
+        "da_angle_deg": -30,
+    }
+
+    g = geometry()
+    assert math.degrees(g.da_angle_rad) == pytest.approx(-30.0)
+    assert math.degrees(g.ad_angle_rad) == pytest.approx(150.0)
+    assert (
+        g.solver_to_robot_rotation_rad
+        == pytest.approx(g.ad_angle_rad)
+    )
 
 
 def test_derived_wheel_center_distances() -> None:
@@ -263,7 +288,7 @@ def test_singular_boundary_is_detected_by_jacobian() -> None:
         )
 
 
-def test_trajectory_sampling_and_sketch_rotation() -> None:
+def test_trajectory_sampling_and_robot_frame_convention() -> None:
     g = geometry()
     poses = sample_leg_trajectory(
         g,
@@ -286,33 +311,37 @@ def test_trajectory_sampling_and_sketch_rotation() -> None:
         )
     )
 
-    sketch = pose_in_sketch_frame(
+    robot = pose_in_robot_frame(
         g,
         poses[3],
     )
     assert distance(
-        sketch.a,
-        sketch.d,
+        robot.a,
+        robot.d,
     ) == pytest.approx(g.ad_mm)
     expected_d = (
         g.ad_mm
         * math.cos(
-            g.ad_orientation_rad
+            g.ad_angle_rad
         ),
         g.ad_mm
         * math.sin(
-            g.ad_orientation_rad
+            g.ad_angle_rad
         ),
     )
-    assert sketch.d == pytest.approx(
+    assert robot.d == pytest.approx(
         expected_d
     )
-    ad_vector = sub(sketch.d, sketch.a)
+    ad_vector = sub(robot.d, robot.a)
+    da_vector = sub(robot.a, robot.d)
     ad_angle = math.atan2(ad_vector[1], ad_vector[0])
-    assert math.degrees(ad_angle) == pytest.approx(30.0)
+    da_angle = math.atan2(da_vector[1], da_vector[0])
+    assert math.degrees(ad_angle) == pytest.approx(150.0)
+    assert math.degrees(da_angle) == pytest.approx(-30.0)
+    assert robot.d[1] > robot.a[1]
 
 
-def test_sketch_frame_jacobian_matches_transformed_numeric_derivative() -> None:
+def test_robot_frame_jacobian_matches_numeric_derivative() -> None:
     g = geometry()
     alpha = math.radians(75.0)
     local_pose = solve_leg_pose(
@@ -324,13 +353,13 @@ def test_sketch_frame_jacobian_matches_transformed_numeric_derivative() -> None:
         g,
         local_pose,
     )
-    robot_jacobian = jacobian_in_sketch_frame(
+    robot_jacobian = jacobian_in_robot_frame(
         g,
         local_jacobian,
     )
 
     step = 1e-6
-    plus = pose_in_sketch_frame(
+    plus = pose_in_robot_frame(
         g,
         solve_leg_pose(
             g,
@@ -338,7 +367,7 @@ def test_sketch_frame_jacobian_matches_transformed_numeric_derivative() -> None:
             assembly_branch=1,
         ),
     ).o
-    minus = pose_in_sketch_frame(
+    minus = pose_in_robot_frame(
         g,
         solve_leg_pose(
             g,
