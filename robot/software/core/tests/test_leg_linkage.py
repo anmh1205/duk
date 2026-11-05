@@ -233,7 +233,7 @@ def test_outside_workspace_is_rejected() -> None:
         solve_leg_pose(
             g,
             math.radians(20.0),
-            )
+        )
 
 
 def test_analytic_wheel_jacobian_matches_central_difference() -> None:
@@ -363,14 +363,14 @@ def test_robot_frame_jacobian_matches_numeric_derivative() -> None:
         solve_leg_pose(
             g,
             alpha + step,
-            ),
+        ),
     ).o
     minus = pose_in_robot_frame(
         g,
         solve_leg_pose(
             g,
             alpha - step,
-            ),
+        ),
     ).o
     numeric = (
         (plus[0] - minus[0]) / (2 * step),
