@@ -32,7 +32,8 @@ def main() -> None:
         "--branch",
         type=int,
         choices=(-1, 1),
-        default=1,
+        default=None,
+        help="override the physical assembly branch from configuration",
     )
     parser.add_argument(
         "--frame",
@@ -46,10 +47,15 @@ def main() -> None:
     geometry = load_leg_geometry_json(
         repository_geometry_path()
     )
+    branch = (
+        geometry.assembly_branch
+        if args.branch is None
+        else args.branch
+    )
     pose = solve_leg_pose(
         geometry,
         math.radians(args.angle_deg),
-        assembly_branch=args.branch,
+        assembly_branch=branch,
     )
     jacobian = leg_jacobian(geometry, pose)
     robot_pose = pose_in_robot_frame(geometry, pose)
@@ -79,7 +85,7 @@ def main() -> None:
     )
     print(
         "  assembly branch used for this calculation: "
-        f"{args.branch:+d}"
+        f"{branch:+d}"
     )
     print(f"  display frame: {frame_label}")
     print(
@@ -114,7 +120,7 @@ def main() -> None:
             lower + margin,
             upper - margin,
             180,
-            assembly_branch=args.branch,
+            assembly_branch=branch,
         )
         if args.frame == "robot":
             display_poses = tuple(
