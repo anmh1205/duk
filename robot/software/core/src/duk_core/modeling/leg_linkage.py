@@ -1,20 +1,28 @@
 """DUK planar four-bar leg and wheel-center kinematics.
 
-The model uses a local A-D frame for loop closure:
+Two coordinate frames are deliberately separated.
+
+Solver frame:
 - A = (0, 0)
 - D = (AD, 0)
-- ``input_angle_rad`` is the directed angle from A->D to A->B.
+- +x is aligned with the directed vector A->D
+- input_angle_rad is the directed angle from A->D to A->B
 
-The wheel-center construction follows the established DUK geometry:
-- H, B, C are collinear in the order H-B-C.
-- BH is measured opposite the B->C direction.
-- OH is perpendicular to BC.
-- ``wheel_side`` selects which side of directed BC contains O. A value of -1
-  matches the canonical local B-xy convention where +y points opposite O.
+Robot frame:
+- +Ox points right
+- +Oy points up
+- positive rotation is counter-clockwise
+- the configured directed vector D->A defines mechanism orientation
 
-All lengths are expressed in millimetres. Angles are expressed in radians in
-this API. The module intentionally has no NumPy dependency so it remains usable
-in lightweight core/runtime contexts.
+The physical DUK convention is angle(D->A, +Ox) = -30 deg. The opposite
+vector A->D is therefore +150 deg. That derived A->D angle is exactly the
+rotation from the solver frame into the robot frame.
+
+The wheel-center construction keeps H, B and C collinear in the order H-B-C,
+with BH opposite B->C and OH perpendicular to BC.
+
+All lengths are millimetres. Public API angle values are radians; JSON
+configuration angles use the declared degree unit.
 """
 
 from __future__ import annotations
@@ -42,11 +50,11 @@ class KinematicSingularityError(LinkageError):
 
 @dataclass(frozen=True, slots=True)
 class LegGeometry:
-    """Immutable DUK leg geometry in millimetres.
+    """Immutable DUK leg geometry and robot-frame orientation.
 
-    ``ad_orientation_rad`` rotates the local A-D frame into the mechanical
-    sketch/body frame once that sketch convention is used. It does not alter
-    the four-bar closure itself.
+    da_angle_rad is the directed angle of D->A measured from robot +Ox.
+    Solver loop closure is orientation-independent; robot orientation is
+    applied only when transforming solver results into the robot frame.
     """
 
     ab_mm: float
@@ -56,7 +64,7 @@ class LegGeometry:
     bh_mm: float
     oh_mm: float
     wheel_radius_mm: float
-    ad_orientation_rad: float = 0.0
+    da_angle_rad: float
     wheel_side: int = -1
 
     def __post_init__(self) -> None:
@@ -73,14 +81,24 @@ class LegGeometry:
             raise ValueError(
                 "all geometry lengths and wheel radius must be finite and positive"
             )
-        if not math.isfinite(self.ad_orientation_rad):
-            raise ValueError("ad_orientation_rad must be finite")
+        if not math.isfinite(self.da_angle_rad):
+            raise ValueError("da_angle_rad must be finite")
         if self.wheel_side not in (-1, 1):
             raise ValueError("wheel_side must be either -1 or +1")
 
     @property
     def wheel_diameter_mm(self) -> float:
         return 2.0 * self.wheel_radius_mm
+
+    @property
+    def ad_angle_rad(self) -> float:
+        """Directed A->D angle in the robot frame."""
+        return _normalize_angle_rad(self.da_angle_rad + math.pi)
+
+    @property
+    def solver_to_robot_rotation_rad(self) -> float:
+        """Rotation that maps solver-frame vectors into the robot frame."""
+        return self.ad_angle_rad
 
     @property
     def bo_mm(self) -> float:
@@ -182,6 +200,11 @@ def _norm(p: Point2) -> float:
 
 def _left_normal(unit_vector: Point2) -> Point2:
     return -unit_vector[1], unit_vector[0]
+
+
+def _normalize_angle_rad(angle_rad: float) -> float:
+    """Normalize an angle to [-pi, pi)."""
+    return (angle_rad + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def _validate_branch(assembly_branch: int) -> None:
@@ -441,32 +464,31 @@ def transform_jacobian(
     )
 
 
-def pose_in_sketch_frame(
+def pose_in_robot_frame(
     geometry: LegGeometry,
     pose: LegPose,
     origin_mm: Point2 = (0.0, 0.0),
 ) -> LegPose:
-    """Rotate a local A-D pose into the configured robot/sketch frame.
+    """Transform a solver-frame pose into the DUK robot frame.
 
-    In the current DUK physical configuration, A is the frame origin and AD is
-    oriented +30 degrees from +Ox. The four-bar solver remains in its local A-D
-    frame; this transform is the presentation/robot-frame boundary.
+    Solver +x is A->D. The transform rotation is therefore the derived
+    robot-frame angle of A->D, opposite to the configured D->A vector.
     """
     return transform_pose(
         pose,
-        geometry.ad_orientation_rad,
+        geometry.solver_to_robot_rotation_rad,
         origin_mm,
     )
 
 
-def jacobian_in_sketch_frame(
+def jacobian_in_robot_frame(
     geometry: LegGeometry,
     jacobian: LegJacobian,
 ) -> LegJacobian:
-    """Rotate a local A-D Jacobian into the configured robot/sketch frame."""
+    """Rotate a solver-frame Jacobian into the DUK robot frame."""
     return transform_jacobian(
         jacobian,
-        geometry.ad_orientation_rad,
+        geometry.solver_to_robot_rotation_rad,
     )
 
 
@@ -486,6 +508,21 @@ def geometry_from_mapping(
     links = data["links_mm"]
     wheel_offset = data["wheel_center_offset_mm"]
     wheel = data["wheel_mm"]
+    robot_frame = data["robot_frame"]
+
+    expected_frame_convention = {
+        "origin": "A",
+        "x_axis": "+Ox points right",
+        "y_axis": "+Oy points up",
+        "positive_rotation": "counter_clockwise",
+        "reference_vector": "DA",
+    }
+    for key, expected in expected_frame_convention.items():
+        if robot_frame.get(key) != expected:
+            raise ValueError(
+                f"robot_frame.{key} must be {expected!r}; "
+                f"got {robot_frame.get(key)!r}"
+            )
     radius = float(wheel["radius"])
     diameter = float(wheel["diameter"])
     if not math.isclose(
@@ -506,8 +543,8 @@ def geometry_from_mapping(
         bh_mm=float(wheel_offset["BH"]),
         oh_mm=float(wheel_offset["OH"]),
         wheel_radius_mm=radius,
-        ad_orientation_rad=math.radians(
-            float(data["ad_orientation_deg"])
+        da_angle_rad=math.radians(
+            float(robot_frame["da_angle_deg"])
         ),
         wheel_side=int(wheel_offset["wheel_side"]),
     )
