@@ -17,7 +17,7 @@ The core models the established planar leg/wheel geometry rather than a generic 
 
 The physical geometry source is [`robot/config/physical/duk_leg_geometry.json`](../../config/physical/duk_leg_geometry.json). It records AB = 131 mm, BC = 42 mm, CD = 135 mm, AD = 81 mm, BH = 119 mm, OH = 55 mm and wheel radius 75 mm.
 
-`assembly_branch` remains intentionally unset. The link lengths admit two circle-intersection branches; the physical CAD branch must be verified before either branch is treated as robot truth.
+`assembly_branch = -1` is now the physical branch defined by the CAD reference. The `+1` branch remains mathematically valid but represents the mirror assembly and must not be used as the default robot geometry.
 
 ## Coordinate-frame convention
 
@@ -67,16 +67,15 @@ The wheel-center construction remains:
 Inside the DUK development container:
 
 ```bash
-python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75 --branch 1
+python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75
 python -m pytest -q robot/software/core/tests
 ```
 
-Robot frame is the default output frame. For solver-level debugging only:
+Robot frame and the physical `-1` assembly branch are the defaults. The example angle is only a demo input and is not claimed to reproduce the exact CAD screenshot pose. For solver-level debugging only:
 
 ```bash
 python robot/software/core/examples/duk_leg_kinematics.py \
   --angle-deg 75 \
-  --branch 1 \
   --frame solver
 ```
 
@@ -85,7 +84,6 @@ For Matplotlib windows:
 ```bash
 python robot/software/core/examples/duk_leg_kinematics.py \
   --angle-deg 75 \
-  --branch 1 \
   --plot
 ```
 
