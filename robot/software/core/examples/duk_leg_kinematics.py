@@ -7,10 +7,10 @@ import math
 from pathlib import Path
 
 from duk_core.modeling import (
-    jacobian_in_sketch_frame,
+    jacobian_in_robot_frame,
     leg_jacobian,
     load_leg_geometry_json,
-    pose_in_sketch_frame,
+    pose_in_robot_frame,
     sample_leg_trajectory,
     solve_leg_pose,
 )
@@ -36,9 +36,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--frame",
-        choices=("robot", "local"),
+        choices=("robot", "solver"),
         default="robot",
-        help="display/output frame; robot applies configured AD orientation from +Ox",
+        help="output frame; robot uses the configured directed D->A convention",
     )
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
@@ -52,19 +52,20 @@ def main() -> None:
         assembly_branch=args.branch,
     )
     jacobian = leg_jacobian(geometry, pose)
-    robot_pose = pose_in_sketch_frame(geometry, pose)
-    robot_jacobian = jacobian_in_sketch_frame(geometry, jacobian)
+    robot_pose = pose_in_robot_frame(geometry, pose)
+    robot_jacobian = jacobian_in_robot_frame(geometry, jacobian)
     if args.frame == "robot":
         display_pose = robot_pose
         display_jacobian = robot_jacobian
         frame_label = (
-            "robot/sketch frame "
-            f"(AD = {math.degrees(geometry.ad_orientation_rad):+.1f} deg from +Ox)"
+            "robot frame "
+            f"(DA={math.degrees(geometry.da_angle_rad):+.1f} deg, "
+            f"AD={math.degrees(geometry.ad_angle_rad):+.1f} deg)"
         )
     else:
         display_pose = pose
         display_jacobian = jacobian
-        frame_label = "local AD solver frame"
+        frame_label = "solver frame (A->D aligned with +x)"
     lower, upper = geometry.geometric_angle_limits_rad()
 
     print("DUK leg geometry")
@@ -82,8 +83,12 @@ def main() -> None:
     )
     print(f"  display frame: {frame_label}")
     print(
-        "  configured AD orientation: "
-        f"{math.degrees(geometry.ad_orientation_rad):.3f} deg from +Ox"
+        "  robot-frame DA direction: "
+        f"{math.degrees(geometry.da_angle_rad):.3f} deg from +Ox"
+    )
+    print(
+        "  derived robot-frame AD direction: "
+        f"{math.degrees(geometry.ad_angle_rad):.3f} deg from +Ox"
     )
     for name in ("A", "B", "C", "D", "H", "O"):
         x, y = display_pose.point(name)
@@ -113,10 +118,10 @@ def main() -> None:
         )
         if args.frame == "robot":
             display_poses = tuple(
-                pose_in_sketch_frame(geometry, sampled_pose)
+                pose_in_robot_frame(geometry, sampled_pose)
                 for sampled_pose in poses
             )
-            jacobian_rotation = geometry.ad_orientation_rad
+            jacobian_rotation = geometry.solver_to_robot_rotation_rad
         else:
             display_poses = poses
             jacobian_rotation = 0.0
