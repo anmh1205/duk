@@ -9,10 +9,10 @@
     "CD": 135,
     "AD": 81
   },
-  "bco_rigid_body_mm": {
-    "BC": 42,
-    "BH": 119,
-    "OH": 55,
+  "bco_rigid_body": {
+    "BC_mm": 42,
+    "BH_mm": 119,
+    "OH_mm": 55,
     "wheel_side": -1
   },
   "wheel_mm": {
