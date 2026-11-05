@@ -35,6 +35,15 @@ from typing import Any, Mapping
 
 Point2 = tuple[float, float]
 
+LEG_GEOMETRY_SCHEMA_VERSION = 2
+ROBOT_FRAME_CONVENTION = {
+    "origin": "A",
+    "x_axis": "+Ox points right",
+    "y_axis": "+Oy points up",
+    "positive_rotation": "counter_clockwise",
+    "reference_vector": "DA",
+}
+
 
 class LinkageError(ValueError):
     """Base class for DUK linkage geometry errors."""
@@ -496,6 +505,13 @@ def geometry_from_mapping(
     data: Mapping[str, Any],
 ) -> LegGeometry:
     """Create LegGeometry from the repository physical-config schema."""
+    schema_version = data.get("schema_version")
+    if schema_version != LEG_GEOMETRY_SCHEMA_VERSION:
+        raise ValueError(
+            "unsupported leg geometry schema_version: "
+            f"{schema_version!r}; expected {LEG_GEOMETRY_SCHEMA_VERSION}"
+        )
+
     units = data.get("units", {})
     if (
         units.get("length") != "mm"
@@ -510,14 +526,7 @@ def geometry_from_mapping(
     wheel = data["wheel_mm"]
     robot_frame = data["robot_frame"]
 
-    expected_frame_convention = {
-        "origin": "A",
-        "x_axis": "+Ox points right",
-        "y_axis": "+Oy points up",
-        "positive_rotation": "counter_clockwise",
-        "reference_vector": "DA",
-    }
-    for key, expected in expected_frame_convention.items():
+    for key, expected in ROBOT_FRAME_CONVENTION.items():
         if robot_frame.get(key) != expected:
             raise ValueError(
                 f"robot_frame.{key} must be {expected!r}; "
