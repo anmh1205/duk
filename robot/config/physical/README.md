@@ -49,7 +49,7 @@ No separate 90° display correction and no independent AD-orientation parameter 
 
 B, C and O are not three independently solved points. They are fixed material points of one rigid carrier link.
 
-The configuration groups that geometry under `bco_rigid_body_mm`:
+The configuration groups that geometry under `bco_rigid_body`:
 
 - (BC = 42) mm;
 - (BH = 119) mm;
