@@ -1,24 +1,19 @@
 """Canonical planar kinematics for the DUK leg mechanism.
 
-All solved points are expressed directly in one robot frame:
+The physical model is expressed directly in one robot frame:
 
-- A is the origin.
+- A is the only fixed point and is defined as A=(0,0).
 - +Ox points right.
 - +Oy points up.
 - positive rotation is counter-clockwise.
-- directed D->A is -30 degrees from +Ox.
-- therefore directed A->D is +150 degrees from +Ox.
-- ab_angle_rad is the absolute directed angle of A->B from robot +Ox.
+- directed D->A is fixed at -30 degrees from +Ox.
+- q is the directed counter-clockwise angle from A->B to D->A.
 
-Only A is fixed numerically at (0, 0). Every other point is derived from
-geometry, topology and the current configuration angle. There is no
-post-solution mirror, solver-to-robot rotation, or display-time correction in
-this physical model.
+Every other point is derived from equations. No display-time mirror,
+solver-to-robot rotation, or post-hoc coordinate correction is used.
 
 B, C and O are fixed material points on one rigid wheel-carrier body. H is an
-auxiliary construction point in that same body. Physical sidedness is stored
-with named left/right relations; numeric +/- branch signs remain internal to
-the circle-intersection calculation.
+auxiliary construction point on that same body.
 """
 
 from __future__ import annotations
@@ -47,7 +42,7 @@ class LinkageError(ValueError):
 
 
 class UnreachableConfigurationError(LinkageError):
-    """Raised when the requested physical four-bar pose is unreachable."""
+    """Raised when the requested four-bar pose is unreachable."""
 
 
 class KinematicSingularityError(LinkageError):
@@ -112,7 +107,7 @@ def _signed_side(
 
 @dataclass(frozen=True, slots=True)
 class BCORigidBodyGeometry:
-    """Geometry of the rigid B-C-O wheel-carrier link."""
+    """Invariant geometry of the rigid B-C-O wheel carrier."""
 
     bc_mm: float
     bh_mm: float
@@ -120,8 +115,10 @@ class BCORigidBodyGeometry:
     o_side_of_bc: Side
 
     def __post_init__(self) -> None:
-        lengths = (self.bc_mm, self.bh_mm, self.oh_mm)
-        if not all(math.isfinite(v) and v > 0.0 for v in lengths):
+        if not all(
+            math.isfinite(v) and v > 0.0
+            for v in (self.bc_mm, self.bh_mm, self.oh_mm)
+        ):
             raise ValueError("BC, BH and OH must be finite and positive")
         _validate_side(
             self.o_side_of_bc,
@@ -154,7 +151,7 @@ class BCORigidBodyGeometry:
         *,
         tolerance_mm: float = 1e-8,
     ) -> tuple[Point2, Point2, Point2, Point2]:
-        """Derive H/O from B/C while preserving the rigid BCO body."""
+        """Derive H and O from the current rigid-body B->C basis."""
         bc_vector = _sub(c, b)
         bc_length = _norm(bc_vector)
         if not math.isclose(
@@ -170,7 +167,11 @@ class BCORigidBodyGeometry:
 
         e_bc = _scale(1.0 / self.bc_mm, bc_vector)
         left_normal_bc = _left_normal(e_bc)
-        h = _sub(b, _scale(self.bh_mm, e_bc))
+
+        h = _sub(
+            b,
+            _scale(self.bh_mm, e_bc),
+        )
         o = _add(
             h,
             _scale(
@@ -185,12 +186,13 @@ class BCORigidBodyGeometry:
         d_b: Point2,
         d_c: Point2,
     ) -> tuple[Point2, Point2]:
-        """Derive dH/dalpha and dO/dalpha from rigid-body kinematics."""
+        """Derive dH/dq and dO/dq from rigid-body kinematics."""
         d_e_bc = _scale(
             1.0 / self.bc_mm,
             _sub(d_c, d_b),
         )
         d_left_normal = _left_normal(d_e_bc)
+
         d_h = _sub(
             d_b,
             _scale(self.bh_mm, d_e_bc),
@@ -207,7 +209,7 @@ class BCORigidBodyGeometry:
 
 @dataclass(frozen=True, slots=True)
 class LegGeometry:
-    """Immutable DUK geometry in the canonical robot frame."""
+    """Immutable DUK geometry and physical topology."""
 
     ab_mm: float
     cd_mm: float
@@ -219,13 +221,15 @@ class LegGeometry:
     c_side_of_bd: Side
 
     def __post_init__(self) -> None:
-        values = (
-            self.ab_mm,
-            self.cd_mm,
-            self.ad_mm,
-            self.wheel_radius_mm,
-        )
-        if not all(math.isfinite(v) and v > 0.0 for v in values):
+        if not all(
+            math.isfinite(v) and v > 0.0
+            for v in (
+                self.ab_mm,
+                self.cd_mm,
+                self.ad_mm,
+                self.wheel_radius_mm,
+            )
+        ):
             raise ValueError(
                 "link lengths and wheel radius must be finite and positive"
             )
@@ -253,10 +257,6 @@ class LegGeometry:
         return self.bco_body.oh_mm
 
     @property
-    def wheel_diameter_mm(self) -> float:
-        return 2.0 * self.wheel_radius_mm
-
-    @property
     def bo_mm(self) -> float:
         return self.bco_body.bo_mm
 
@@ -265,20 +265,56 @@ class LegGeometry:
         return self.bco_body.co_mm
 
     @property
-    def ad_angle_rad(self) -> float:
-        """Absolute robot-frame direction of A->D."""
-        return _normalize_angle_rad(self.da_angle_rad + math.pi)
+    def wheel_diameter_mm(self) -> float:
+        return 2.0 * self.wheel_radius_mm
 
     @property
-    def d_point(self) -> Point2:
-        """Point D derived from AD length and A->D direction."""
-        return (
-            self.ad_mm * math.cos(self.ad_angle_rad),
-            self.ad_mm * math.sin(self.ad_angle_rad),
+    def ad_angle_rad(self) -> float:
+        """Directed A->D angle derived from the configured D->A angle."""
+        return _normalize_angle_rad(self.da_angle_rad + math.pi)
+
+    def d_point(self, a: Point2 = (0.0, 0.0)) -> Point2:
+        """Derive D from A, AD and the A->D direction."""
+        return _add(
+            a,
+            (
+                self.ad_mm * math.cos(self.ad_angle_rad),
+                self.ad_mm * math.sin(self.ad_angle_rad),
+            ),
         )
 
-    def relative_angle_limits_rad(self) -> tuple[float, float]:
-        """Return positive absolute A->D/A->B separation limits."""
+    def ab_angle_rad(self, linkage_angle_rad: float) -> float:
+        """Derive absolute A->B direction from q=directed angle AB->DA."""
+        return _normalize_angle_rad(
+            self.da_angle_rad - linkage_angle_rad
+        )
+
+    def b_point(
+        self,
+        linkage_angle_rad: float,
+        a: Point2 = (0.0, 0.0),
+    ) -> Point2:
+        """Derive B from A, AB and the current linkage angle q."""
+        theta_ab = self.ab_angle_rad(linkage_angle_rad)
+        return _add(
+            a,
+            (
+                self.ab_mm * math.cos(theta_ab),
+                self.ab_mm * math.sin(theta_ab),
+            ),
+        )
+
+    def geometric_linkage_angle_limits_rad(
+        self,
+    ) -> tuple[float, float]:
+        """Return the geometric q limits for q=directed angle AB->DA.
+
+        For q in [0, pi], the B-D distance is
+
+            BD^2 = AB^2 + AD^2 + 2*AB*AD*cos(q)
+
+        because A->D is opposite D->A.
+        """
         bd_lower = max(
             abs(self.cd_mm - self.bc_mm),
             abs(self.ab_mm - self.ad_mm),
@@ -292,28 +328,30 @@ class LegGeometry:
                 "link lengths admit no four-bar assembly"
             )
 
-        def angle_for_bd(distance_mm: float) -> float:
-            numerator = self.ab_mm**2 + self.ad_mm**2 - distance_mm**2
-            denominator = 2.0 * self.ab_mm * self.ad_mm
-            cosine = max(-1.0, min(1.0, numerator / denominator))
+        denominator = 2.0 * self.ab_mm * self.ad_mm
+
+        def q_for_bd(distance_mm: float) -> float:
+            cosine = (
+                distance_mm**2
+                - self.ab_mm**2
+                - self.ad_mm**2
+            ) / denominator
+            cosine = max(-1.0, min(1.0, cosine))
             return math.acos(cosine)
 
-        return angle_for_bd(bd_lower), angle_for_bd(bd_upper)
-
-    def geometric_ab_angle_limits_rad(self) -> tuple[float, float]:
-        """Return physical absolute A->B angle limits in robot coordinates."""
-        relative_lower, relative_upper = self.relative_angle_limits_rad()
-        sign = _side_sign(self.b_side_of_ad)
-        first = self.ad_angle_rad + sign * relative_lower
-        second = self.ad_angle_rad + sign * relative_upper
-        return min(first, second), max(first, second)
+        q_at_upper_bd = q_for_bd(bd_upper)
+        q_at_lower_bd = q_for_bd(bd_lower)
+        return (
+            min(q_at_upper_bd, q_at_lower_bd),
+            max(q_at_upper_bd, q_at_lower_bd),
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class LegPose:
-    """Solved DUK leg pose directly in canonical robot coordinates."""
+    """Solved DUK pose directly in canonical robot coordinates."""
 
-    ab_angle_rad: float
+    linkage_angle_rad: float
     a: Point2
     b: Point2
     c: Point2
@@ -336,7 +374,7 @@ class LegPose:
 
 @dataclass(frozen=True, slots=True)
 class LegJacobian:
-    """d(point)/d(ab_angle) in canonical robot coordinates [mm/rad]."""
+    """d(point)/dq in canonical robot coordinates [mm/rad]."""
 
     d_b: Point2
     d_c: Point2
@@ -352,28 +390,27 @@ class LegJacobian:
 
 def solve_leg_pose(
     geometry: LegGeometry,
-    ab_angle_rad: float,
+    linkage_angle_rad: float,
     *,
     c_side_of_bd: Side | None = None,
     tolerance_mm: float = 1e-9,
 ) -> LegPose:
-    """Solve A/B/C/D/H/O directly in canonical robot coordinates.
+    """Solve A/B/C/D/H/O from the linkage angle q.
 
-    ab_angle_rad is the absolute A->B direction from robot +Ox. An optional
-    c_side_of_bd override exists only for mathematical comparison; normal robot
-    use relies on the physical topology from configuration.
+    q is the directed counter-clockwise angle from A->B to D->A:
+
+        theta_AB = theta_DA - q
+
+    The optional C-side override exists only for mathematical comparison.
     """
-    if not math.isfinite(ab_angle_rad):
-        raise ValueError("ab_angle_rad must be finite")
+    if not math.isfinite(linkage_angle_rad):
+        raise ValueError("linkage_angle_rad must be finite")
     if not math.isfinite(tolerance_mm) or tolerance_mm <= 0.0:
         raise ValueError("tolerance_mm must be finite and positive")
 
     a = (0.0, 0.0)
-    d = geometry.d_point
-    b = (
-        geometry.ab_mm * math.cos(ab_angle_rad),
-        geometry.ab_mm * math.sin(ab_angle_rad),
-    )
+    d = geometry.d_point(a)
+    b = geometry.b_point(linkage_angle_rad, a)
 
     ad = _sub(d, a)
     ab = _sub(b, a)
@@ -389,12 +426,13 @@ def solve_leg_pose(
     distance = _norm(bd)
     min_distance = abs(geometry.cd_mm - geometry.bc_mm)
     max_distance = geometry.cd_mm + geometry.bc_mm
+
     if (
         distance < min_distance - tolerance_mm
         or distance > max_distance + tolerance_mm
     ):
         raise UnreachableConfigurationError(
-            f"AB angle has no four-bar solution: BD={distance:.6g} mm, "
+            f"linkage angle has no four-bar solution: BD={distance:.6g} mm, "
             f"required [{min_distance:.6g}, {max_distance:.6g}] mm"
         )
     if distance <= tolerance_mm:
@@ -405,15 +443,18 @@ def solve_leg_pose(
     ex = _scale(1.0 / distance, bd)
     ey = _left_normal(ex)
     along = (
-        geometry.bc_mm**2 - geometry.cd_mm**2 + distance**2
+        geometry.bc_mm**2
+        - geometry.cd_mm**2
+        + distance**2
     ) / (2.0 * distance)
     height_sq = geometry.bc_mm**2 - along**2
+
     if height_sq < -tolerance_mm:
         raise UnreachableConfigurationError(
             "circle intersection failed after tolerance check"
         )
-    height = math.sqrt(max(0.0, height_sq))
 
+    height = math.sqrt(max(0.0, height_sq))
     c_side = (
         geometry.c_side_of_bd
         if c_side_of_bd is None
@@ -426,7 +467,10 @@ def solve_leg_pose(
         b,
         _add(
             _scale(along, ex),
-            _scale(_side_sign(c_side) * height, ey),
+            _scale(
+                _side_sign(c_side) * height,
+                ey,
+            ),
         ),
     )
 
@@ -437,7 +481,7 @@ def solve_leg_pose(
     )
 
     return LegPose(
-        ab_angle_rad=ab_angle_rad,
+        linkage_angle_rad=linkage_angle_rad,
         a=a,
         b=b,
         c=c,
@@ -455,7 +499,7 @@ def leg_jacobian(
     *,
     singularity_tolerance: float = 1e-10,
 ) -> LegJacobian:
-    """Return analytic d(point)/d(ab_angle) in robot coordinates."""
+    """Return analytic d(point)/dq in canonical robot coordinates."""
     if (
         not math.isfinite(singularity_tolerance)
         or singularity_tolerance <= 0.0
@@ -464,16 +508,25 @@ def leg_jacobian(
             "singularity_tolerance must be finite and positive"
         )
 
-    alpha = pose.ab_angle_rad
-    d_b = (
-        -geometry.ab_mm * math.sin(alpha),
-        geometry.ab_mm * math.cos(alpha),
+    theta_ab = geometry.ab_angle_rad(
+        pose.linkage_angle_rad
     )
+
+    # theta_AB = theta_DA - q, hence d(theta_AB)/dq = -1.
+    d_b = (
+        geometry.ab_mm * math.sin(theta_ab),
+        -geometry.ab_mm * math.cos(theta_ab),
+    )
+
     r_bc = _sub(pose.c, pose.b)
     r_dc = _sub(pose.c, pose.d)
     rhs = _dot(r_bc, d_b)
     determinant = _cross(r_bc, r_dc)
-    scale = max(1.0, geometry.bc_mm * geometry.cd_mm)
+    scale = max(
+        1.0,
+        geometry.bc_mm * geometry.cd_mm,
+    )
+
     if abs(determinant) <= singularity_tolerance * scale:
         raise KinematicSingularityError(
             "four-bar loop-constraint Jacobian is singular"
@@ -487,6 +540,7 @@ def leg_jacobian(
         d_b,
         d_c,
     )
+
     return LegJacobian(
         d_b=d_b,
         d_c=d_c,
@@ -497,26 +551,28 @@ def leg_jacobian(
 
 def sample_leg_trajectory(
     geometry: LegGeometry,
-    start_ab_angle_rad: float,
-    end_ab_angle_rad: float,
+    start_linkage_angle_rad: float,
+    end_linkage_angle_rad: float,
     sample_count: int,
 ) -> tuple[LegPose, ...]:
-    """Sample a continuous physical A->B angle sweep."""
+    """Sample a continuous q sweep, including both endpoints."""
     if sample_count < 2:
         raise ValueError("sample_count must be at least 2")
     if (
-        not math.isfinite(start_ab_angle_rad)
-        or not math.isfinite(end_ab_angle_rad)
+        not math.isfinite(start_linkage_angle_rad)
+        or not math.isfinite(end_linkage_angle_rad)
     ):
         raise ValueError("trajectory angle bounds must be finite")
 
     step = (
-        end_ab_angle_rad - start_ab_angle_rad
+        end_linkage_angle_rad
+        - start_linkage_angle_rad
     ) / (sample_count - 1)
+
     return tuple(
         solve_leg_pose(
             geometry,
-            start_ab_angle_rad + index * step,
+            start_linkage_angle_rad + index * step,
         )
         for index in range(sample_count)
     )
@@ -534,7 +590,10 @@ def geometry_from_mapping(
         )
 
     units = data.get("units", {})
-    if units.get("length") != "mm" or units.get("angle") != "deg":
+    if (
+        units.get("length") != "mm"
+        or units.get("angle") != "deg"
+    ):
         raise ValueError(
             "leg geometry requires length='mm' and angle='deg'"
         )
