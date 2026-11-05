@@ -1,0 +1,16 @@
+# Opt-in Jazzy simulation, isolated from an already-running base dev container.
+name: duk-${ROS_DISTRO:-jazzy}-sim
+services:
+  dev:
+    image: duk-jazzy-simulation:local
+    build:
+      target: simulation
+    shm_size: 512m
+    environment:
+      ROS_DOMAIN_ID: "42"
+      ROS_AUTOMATIC_DISCOVERY_RANGE: LOCALHOST
+      GZ_PARTITION: duk-vmware-preview
+      QT_QPA_PLATFORM: xcb
+      QT_X11_NO_MITSHM: "1"
+      OMP_NUM_THREADS: "2"
+      LP_NUM_THREADS: "2"

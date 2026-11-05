@@ -72,6 +72,10 @@ The `Development environment` GitHub Actions workflow builds and exercises the C
 
 ## Deliberately separate future concerns
 
+The opt-in [VMware simulation preview](simulation-preview.md) supplies an explicit
+Jazzy desktop extension and a static two-leg geometry smoke test. Its graphics
+settings are not inherited by the base environment.
+
 GPU/NVIDIA runtime configuration, Jetson/JetPack images, GUI forwarding, direct USB/CAN access and ROS 2 communication with external physical networks are not implicit in the base image. Add them as explicit platform or Compose extensions when their requirements are established.
 
 

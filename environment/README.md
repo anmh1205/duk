@@ -63,6 +63,10 @@ CI exercises the same Compose image on native amd64 and arm64 for both Jazzy and
 
 ## What is not claimed
 
+An opt-in Jazzy [VMware simulation preview](../docs/development/simulation-preview.md)
+adds RViz/Gazebo and explicit X11/DRI or software-rendering settings. It is
+separate from the base environment described above.
+
 The base development image does not by itself establish GPU acceleration, Gazebo/RViz GUI forwarding, USB/CAN access, host-network DDS behavior, Jetson/JetPack compatibility or physical-robot access. Those require explicit platform/runtime configuration and validation.
 
 [Development environment](../docs/development/environment.md) · [Platform compatibility](../docs/platforms/compatibility.md).

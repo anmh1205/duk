@@ -1,0 +1,28 @@
+{
+  "name": "DUK — VMware Simulation",
+  "dockerComposeFile": [
+    "../../compose.yaml",
+    "../../environment/compose/simulation.yaml",
+    "../../.local/simulation/compose.json"
+  ],
+  "initializeCommand": "python3 tools/dev/duk-dev.py prepare",
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "duk",
+  "updateRemoteUserUID": true,
+  "postCreateCommand": "bash tools/environment-check/verify-simulation-container.sh",
+  "forwardPorts": [8888],
+  "portsAttributes": {
+    "8888": {"label": "JupyterLab (simulation)", "onAutoForward": "notify"}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/duk-venv/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": ["ms-python.python", "ms-python.vscode-pylance", "ms-toolsai.jupyter", "ms-vscode.cpptools"]
+    }
+  }
+}

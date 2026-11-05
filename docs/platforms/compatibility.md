@@ -28,6 +28,37 @@ Native generic Linux ARM64 is verified for both Jazzy and Humble. This is useful
 
 It does **not** establish Jetson compatibility. NVIDIA Jetson adds JetPack/L4T, GPU runtime, CUDA, device libraries, hardware access and potentially vendor-specific ROS/simulation constraints. `jetson-arm64` therefore remains **unconfigured** until a Jetson-specific image/runtime contract and physical validation are added.
 
+## Local VMware simulation smoke test (2026-11-05)
+
+The opt-in [simulation preview](../development/simulation-preview.md) was
+manually exercised on Ubuntu 24.04 amd64 inside VMware, with an i7-6700K exposed
+to the guest, two online logical CPUs and about 16 GiB RAM. This is separate from
+the CI matrix and is not a guarantee for other VMware hosts.
+
+Observed endpoints:
+
+- Gazebo Sim 8.15.0 (Harmonic) and RViz2 opened the same two-leg static model;
+- both leg assemblies were generated from the canonical geometry, including
+  150 mm wheel diameter; regression checks cover metric conversion, frame
+  mapping, rigid-carrier dimensions and generated visual endpoints;
+- ROS received the robot description, world-to-base static TF and advancing
+  Gazebo simulation clock;
+- the server-only launch also passed that integration check; five short
+  real-time-factor samples were approximately 0.83–1.00 for this static world;
+- the simulation Dev Container CLI lifecycle and its post-create checks passed,
+  including initialization with the generated local Compose override absent;
+- DRI access and explicit software rendering were exercised. OpenGL reported
+  Mesa llvmpipe / OpenGL 4.5, **not hardware acceleration**, on this guest;
+- with both GUI windows open, RViz displayed about 19 FPS at the configured
+  20 FPS limit. Short Gazebo real-time-factor samples varied approximately
+  0.34–1.10 under concurrent desktop load. These are smoke-test observations,
+  not a sustained benchmark or evidence for real-time robot dynamics.
+
+The robot is static and has no assigned mass/inertia, controller or sensors.
+This does not validate balance, closed-loop linkage dynamics, contact behavior
+or a moving robot's performance. The base development container and its running
+notebook session were left separate.
+
 ## Not yet established
 
 The base development environment does not currently claim validated support for:

@@ -14,4 +14,9 @@
 
 The directories reserve engineering ownership; their contents determine which subsystems are implemented.
 
+`duk_description` and `duk_gazebo` now implement an opt-in
+[static Gazebo/RViz preview](../docs/development/simulation-preview.md) using the
+canonical leg geometry. This establishes rendering and geometry integration,
+not robot dynamics, controllers or hardware support.
+
 [Repository layout](../docs/architecture/repository-layout.md) · [Hardware documents](../docs/hardware/README.md) · [Software documents](../docs/software/README.md).

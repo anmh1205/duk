@@ -47,6 +47,12 @@ The environment workflow also runs weekly on the default branch. This is intenti
 
 ## Evidence boundaries
 
+The separate [simulation workflow](../../.github/workflows/simulation.yml) builds
+the opt-in Jazzy image, checks geometry and exercises the static preview's ROS
+description, TF and advancing clock without a GUI. It does not test VMware
+graphics, accelerated rendering or real robot dynamics. Local GUI observations
+are recorded separately in [Platform compatibility](../platforms/compatibility.md).
+
 A green Python-core job does not prove the Docker image is valid. A green development-environment workflow establishes only the combinations explicitly exercised above.
 
 It does **not** establish NVIDIA GPU acceleration, Jetson/JetPack/L4T, simulation GUI forwarding, USB/serial/CAN passthrough, external ROS 2 DDS networking or physical-robot access. Those require separate runtime definitions and tests.

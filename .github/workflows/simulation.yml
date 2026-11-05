@@ -1,0 +1,73 @@
+name: Simulation preview
+
+on:
+  pull_request:
+    paths: &simulation_paths
+      - ".github/workflows/simulation.yml"
+      - ".devcontainer/simulation/**"
+      - "compose.yaml"
+      - "environment/docker/ros/**"
+      - "environment/compose/**"
+      - "robot/config/physical/**"
+      - "robot/software/core/**"
+      - "robot/software/ros2_ws/src/**"
+      - "robot/simulation/**"
+      - "tools/dev/**"
+      - "tools/environment-check/**"
+  push:
+    branches: [main]
+    paths: *simulation_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simulation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  headless:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ROS_DISTRO: jazzy
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate local configuration tooling
+        run: |
+          python3 -m unittest discover -s tools/dev/test -v
+          python3 -m json.tool .devcontainer/simulation/devcontainer.json >/dev/null
+          bash -n tools/environment-check/verify-simulation-container.sh
+          echo "DEV_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "DEV_GID=$(id -g)" >> "$GITHUB_ENV"
+      - name: Build and start the headless simulation environment
+        run: |
+          python3 tools/dev/duk-dev.py configure --preset headless
+          python3 tools/dev/duk-dev.py up
+      - name: Verify image and geometry
+        run: |
+          docker compose -f compose.yaml -f environment/compose/simulation.yaml \
+            -f .local/simulation/compose.json exec -T dev bash -lc '
+              bash tools/environment-check/verify-simulation-container.sh &&
+              PYTHONPATH="$PYTHONPATH:/workspace/robot/software/ros2_ws/src/duk_description" \
+              python -m pytest -q robot/software/ros2_ws/src/duk_description/test
+            '
+      - name: Verify running Gazebo, robot description, TF and clock
+        run: |
+          python3 tools/dev/duk-dev.py demo --headless > /tmp/duk-preview.log 2>&1 &
+          launch_pid=$!
+          trap 'python3 tools/dev/duk-dev.py stop; wait "$launch_pid" || true' EXIT
+          docker compose -f compose.yaml -f environment/compose/simulation.yaml \
+            -f .local/simulation/compose.json exec -T dev bash -lc '
+              source /opt/ros/jazzy/setup.bash &&
+              python tools/environment-check/verify-simulation-preview.py
+            '
+      - name: Show preview diagnostics on failure
+        if: failure()
+        run: cat /tmp/duk-preview.log 2>/dev/null || true
+      - name: Tear down
+        if: always()
+        run: python3 tools/dev/duk-dev.py down

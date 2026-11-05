@@ -1,7 +1,10 @@
 # Compose Extensions
 
-This directory is reserved for Compose extensions when a concrete workflow requires them. The current entry point is [compose.yaml](../../compose.yaml).
+The base entry point is [compose.yaml](../../compose.yaml).
 
-No additional service or deployment architecture is specified by this directory.
+[simulation.yaml](simulation.yaml) selects the opt-in Jazzy simulation target on
+the same `dev` service, with a separate Compose project and volumes. The host
+helper prepares a local override for X11 authentication and optional DRI device
+access. See the [VMware preview workflow](../../docs/development/simulation-preview.md).
 
 [Environment README](../README.md).

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG ROS_DISTRO=jazzy
-FROM ros:${ROS_DISTRO}-ros-base
+FROM ros:${ROS_DISTRO}-ros-base AS base
 
 ARG ROS_DISTRO=jazzy
 ARG DEV_USER=duk
@@ -93,3 +93,24 @@ WORKDIR /workspace
 USER ${DEV_USER}
 
 CMD ["duk-dev-start"]
+
+# Opt-in desktop simulation. Keep the default development target lightweight.
+FROM base AS simulation
+USER root
+RUN test "${ROS_DISTRO}" = jazzy \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ros-jazzy-rviz2 \
+        ros-jazzy-ros-gz \
+        ros-jazzy-robot-state-publisher \
+        mesa-utils \
+        xauth \
+    && rm -rf /var/lib/apt/lists/*
+# Ubuntu's legacy namespace bootstrap otherwise forces mpl_toolkits to its old
+# system Matplotlib even when the modern DUK venv takes precedence on sys.path.
+# PEP 420 namespace discovery works for both the system and venv interpreters.
+RUN rm -f /usr/lib/python3/dist-packages/matplotlib-*-nspkg.pth \
+          /usr/lib/python3/dist-packages/mpl_toolkits/__init__.py
+USER duk
+
+FROM base AS development

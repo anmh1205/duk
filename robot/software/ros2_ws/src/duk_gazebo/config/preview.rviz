@@ -1,0 +1,44 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 232; 237; 243
+    Fixed Frame: world
+    Frame Rate: 20
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Ground grid
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+      Color: 150; 160; 175
+      Reference Frame: world
+    - Class: rviz_default_plugins/RobotModel
+      Name: DUK canonical legs — static preview
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+        Depth: 1
+      Visual Enabled: true
+      Collision Enabled: false
+      Alpha: 1
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.1
+      Pitch: 0.32
+      Yaw: 5.3
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.23
+      Target Frame: world
+Window Geometry:
+  Width: 900
+  Height: 650

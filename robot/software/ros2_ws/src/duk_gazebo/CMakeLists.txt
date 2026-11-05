@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(duk_gazebo)
+find_package(ament_cmake REQUIRED)
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+install(FILES ../../../../simulation/worlds/vmware-preview.sdf DESTINATION share/${PROJECT_NAME}/worlds)
+ament_package()
