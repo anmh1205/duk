@@ -4,10 +4,13 @@ DUK uses independent core tests and end-to-end development-environment tests. Bo
 
 ## Python core
 
-`.github/workflows/python-core.yml` installs `duk-core[test]` directly on an Ubuntu 24.04 runner and verifies:
+`.github/workflows/python-core.yml` installs `duk-core[test,symbolic]` directly on an Ubuntu 24.04 runner and verifies:
 
 - package unit tests;
 - the standalone DUK leg-kinematics example;
+- symbolic geometry agreement, Lagrange identities, inverse kinematics and
+  second-order derivatives; synthetic test parameters are not robot data;
+- the standalone symbolic model with every physical template value still unknown;
 - Python source compilation.
 
 The workflow runs for pull requests and relevant changes pushed to `main`. This keeps the numerical package independently testable without ROS or Docker.

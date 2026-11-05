@@ -456,12 +456,19 @@ def solve_leg_pose(
     ) / (2.0 * distance)
     height_sq = geometry.bc_mm**2 - along**2
 
-    if height_sq < -tolerance_mm:
+    squared_tolerance = tolerance_mm * max(geometry.bc_mm, geometry.cd_mm, distance)
+    if height_sq < -squared_tolerance:
         raise UnreachableConfigurationError(
             "circle intersection failed after tolerance check"
         )
 
-    height = math.sqrt(max(0.0, height_sq))
+    # At tangency, roundoff in the squared radius can create an artificial
+    # nonzero height and hide the exact loop singularity from derivatives.
+    tangent = (
+        abs(distance - min_distance) <= tolerance_mm
+        or abs(distance - max_distance) <= tolerance_mm
+    )
+    height = 0.0 if tangent else math.sqrt(max(0.0, height_sq))
     c_side = (
         geometry.c_side_of_bd
         if c_side_of_bd is None

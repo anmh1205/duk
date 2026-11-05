@@ -1,8 +1,8 @@
-# Mathematical Theory
+# Mathematical theory
 
-The future location for mathematical models and control derivations.
+- [Modeling](modeling.md) — established leg kinematics, inverse position,
+  acceleration and implemented parameterized candidate planar biped equations
+- [Control theory](control.md) — reserved; no controller design is established
 
-- [Modeling](modeling.md) — model equations and assumptions
-- [Control theory](control.md) — control methods and analysis
-
-Pages marked **Reserved** identify future documentation scope only. They do not approve technical decisions.
+Symbolic dynamics are mathematical assumptions with unidentified physical
+parameters. They do not establish validated robot dynamics or hardware behavior.

@@ -37,10 +37,12 @@ jobs:
           cache: pip
           cache-dependency-path: robot/software/core/pyproject.toml
       - name: Install core and test dependencies
-        run: python -m pip install -e "./robot/software/core[test]"
+        run: python -m pip install -e "./robot/software/core[test,symbolic]"
       - name: Run unit tests
         run: python -m pytest -q robot/software/core/tests
       - name: Run DUK leg-kinematics example
         run: python robot/software/core/examples/duk_leg_kinematics.py --angle-deg 75
+      - name: Inspect unidentified symbolic biped model
+        run: python robot/software/core/examples/duk_planar_model.py
       - name: Compile Python sources
         run: python -m compileall -q robot/software/core/src

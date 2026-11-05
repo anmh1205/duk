@@ -1,96 +1,43 @@
-# Physical Configuration
+# Physical configuration
 
-This directory owns established physical dimensions, frame conventions and topology for DUK software models.
+This directory owns established geometry and physical-data templates for DUK.
 
-## Canonical planar robot frame
+## Established leg geometry
 
-The planar leg uses one physical coordinate frame:
+[`duk_leg_geometry.json`](duk_leg_geometry.json) is the single source of leg
+dimensions, topology and coordinate conventions. Lengths use mm and stored angles
+use degrees. The core converts angles to radians.
 
-- origin: point A;
-- +Ox points right;
-- +Oy points up;
-- positive rotation is counter-clockwise;
-- directed D→A angle is -30° from +Ox.
+- A is the origin, (0,0).
+- +x points right and +y points up; CCW is positive.
+- Directed D→A has angle −30°; A→D is its opposite.
+- q is the directed CCW angle AB→DA, not a calibrated motor encoder angle.
 
-Only point A is fixed numerically:
+$$
+\theta_{AB}=\theta_{DA}-q,\qquad
+D=-AD[\cos\theta_{DA},\sin\theta_{DA}]^T,\qquad
+B=AB[\cos\theta_{AB},\sin\theta_{AB}]^T.
+$$
 
-[
-A=(0,0).
-]
+C is the intersection of circles (B, BC) and (D, CD), selected by the configured
+physical left/right topology. With e=(C−B)/BC and N the CCW 90° operator:
 
-No solved coordinate for B, C, D, H or O is stored in configuration.
+$$
+H=B-BH\,e,\qquad O=H+s_O OH\,Ne.
+$$
 
-## Geometry equations
+B/C/O are one rigid carrier; H is an auxiliary construction point. BC, BO, CO
+and signed B–C–O area are invariant. No solved coordinates, display-time mirror,
+solver-frame rotation or post-solution correction are stored in physical config.
 
-The opposite directed-link angle is derived:
+## Unidentified planar parameters
 
-[
-	heta_{AD}=	heta_{DA}+pi.
-]
+[`duk_planar_parameters.example.json`](duk_planar_parameters.example.json) is an
+**unidentified template**, not measured robot physics. All entries are `null`.
+The symbolic model keeps omitted/null values as variables. Copy it to ignored
+`.local/planar-parameters.json` to try identified values locally; never replace an
+unknown mass/inertia with zero just to make a simulation run.
 
-Point D is therefore:
-
-[
-D=A+AD
-egin{bmatrix}
-cos	heta_{AD}\
-sin	heta_{AD}
-end{bmatrix}.
-]
-
-The one-degree-of-freedom linkage coordinate is (q), defined as the directed counter-clockwise angle from (overrightarrow{AB}) to (overrightarrow{DA}):
-
-[
-q=angle(overrightarrow{AB},overrightarrow{DA}).
-]
-
-Hence:
-
-[
-	heta_{AB}=	heta_{DA}-q
-]
-
-and:
-
-[
-B=A+AB
-egin{bmatrix}
-cos	heta_{AB}\
-sin	heta_{AB}
-end{bmatrix}.
-]
-
-Point C is not stored. It is the physical intersection of:
-
-- the circle centered at B with radius BC;
-- the circle centered at D with radius CD.
-
-The physical intersection is selected by named topology: B is on the configured side of directed A→D and C is on the configured side of directed B→D. Numeric branch signs are an implementation detail, not physical configuration.
-
-## Rigid BCO wheel carrier
-
-B, C and O are fixed material points on one rigid carrier. H is an auxiliary construction point.
-
-For every solved pose:
-
-[
-mathbf e_{BC}=rac{C-B}{BC}
-]
-
-[
-H=B-BH,mathbf e_{BC}
-]
-
-and, using the unit normal (mathbf n_{BC}) on the configured physical side of B→C,
-
-[
-O=H+OH,mathbf n_{BC}.
-]
-
-Therefore BC, BO, CO and the signed B-C-O area remain invariant through motion.
-
-## Model boundary
-
-The physical config stores dimensions and relations, not corrected coordinates. There is no display-time mirror, solver-frame rotation, or post-solution point correction in the canonical model.
-
-The coordinate (q) is currently a geometric linkage coordinate. It is not yet declared to be a calibrated motor encoder angle.
+The [modeling reference](../../../docs/theory/modeling.md) defines the SI units,
+link CoM frames, generalized coordinates and candidate dynamics assumptions.
+Preview body dimensions/colors are not evidence for mass, inertia or mount data.

@@ -2,9 +2,9 @@
 
 The DUK documentation structure covers the full intended engineering and product lifecycle. Its directory organization may be established before individual engineering designs, requirements and verification procedures have been decided.
 
-**Documented now:** the [repository layout](architecture/repository-layout.md), area navigation and a minimal agent-instruction framework.
+**Documented now:** the [repository layout](architecture/repository-layout.md), development environment, [static simulation preview](development/simulation-preview.md), and [kinematics / parameterized candidate dynamics](theory/modeling.md), alongside area navigation and agent guidance.
 
-**Reserved:** technical architecture, hardware specifications, algorithm decisions, development procedures, research methods and operational plans. Their placeholders state their intended documentation scope without selecting a solution.
+**Reserved where marked:** technical architecture, hardware specifications, controller decisions, research methods and operational plans. A populated modeling or preview page does not identify physical parameters or establish a working controller.
 
 ## Documentation navigation
 
