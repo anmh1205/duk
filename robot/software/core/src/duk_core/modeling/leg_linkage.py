@@ -369,6 +369,21 @@ def sample_leg_trajectory(
     )
 
 
+def transform_vector(
+    vector: Point2,
+    rotation_rad: float,
+) -> Point2:
+    """Rotate a 2-D vector without translation."""
+    if not all(math.isfinite(v) for v in (*vector, rotation_rad)):
+        raise ValueError("vector and rotation must be finite")
+    c = math.cos(rotation_rad)
+    s = math.sin(rotation_rad)
+    return (
+        c * vector[0] - s * vector[1],
+        s * vector[0] + c * vector[1],
+    )
+
+
 def transform_point(
     point: Point2,
     rotation_rad: float,
@@ -382,11 +397,10 @@ def transform_point(
         raise ValueError(
             "point, rotation, and translation must be finite"
         )
-    c = math.cos(rotation_rad)
-    s = math.sin(rotation_rad)
+    rotated = transform_vector(point, rotation_rad)
     return (
-        translation_mm[0] + c * point[0] - s * point[1],
-        translation_mm[1] + s * point[0] + c * point[1],
+        translation_mm[0] + rotated[0],
+        translation_mm[1] + rotated[1],
     )
 
 
@@ -398,9 +412,7 @@ def transform_pose(
     """Transform all pose points and orientation vectors into another frame."""
 
     def rotate_vector(vector: Point2) -> Point2:
-        rotated = transform_point(vector, rotation_rad)
-        origin = transform_point((0.0, 0.0), rotation_rad)
-        return _sub(rotated, origin)
+        return transform_vector(vector, rotation_rad)
 
     return LegPose(
         input_angle_rad=pose.input_angle_rad,
@@ -416,16 +428,45 @@ def transform_pose(
     )
 
 
+def transform_jacobian(
+    jacobian: LegJacobian,
+    rotation_rad: float,
+) -> LegJacobian:
+    """Rotate all point-derivative vectors into another 2-D frame."""
+    return LegJacobian(
+        d_b=transform_vector(jacobian.d_b, rotation_rad),
+        d_c=transform_vector(jacobian.d_c, rotation_rad),
+        d_h=transform_vector(jacobian.d_h, rotation_rad),
+        d_o=transform_vector(jacobian.d_o, rotation_rad),
+    )
+
+
 def pose_in_sketch_frame(
     geometry: LegGeometry,
     pose: LegPose,
     origin_mm: Point2 = (0.0, 0.0),
 ) -> LegPose:
-    """Rotate a local A-D pose by the configured AD sketch orientation."""
+    """Rotate a local A-D pose into the configured robot/sketch frame.
+
+    In the current DUK physical configuration, A is the frame origin and AD is
+    oriented +30 degrees from +Ox. The four-bar solver remains in its local A-D
+    frame; this transform is the presentation/robot-frame boundary.
+    """
     return transform_pose(
         pose,
         geometry.ad_orientation_rad,
         origin_mm,
+    )
+
+
+def jacobian_in_sketch_frame(
+    geometry: LegGeometry,
+    jacobian: LegJacobian,
+) -> LegJacobian:
+    """Rotate a local A-D Jacobian into the configured robot/sketch frame."""
+    return transform_jacobian(
+        jacobian,
+        geometry.ad_orientation_rad,
     )
 
 
