@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from duk_core.modeling import (
+    jacobian_in_sketch_frame,
     leg_jacobian,
     load_leg_geometry_json,
     pose_in_sketch_frame,
@@ -33,6 +34,12 @@ def main() -> None:
         choices=(-1, 1),
         default=1,
     )
+    parser.add_argument(
+        "--frame",
+        choices=("robot", "local"),
+        default="robot",
+        help="display/output frame; robot keeps AD at configured +30 deg from +Ox",
+    )
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
 
@@ -45,6 +52,16 @@ def main() -> None:
         assembly_branch=args.branch,
     )
     jacobian = leg_jacobian(geometry, pose)
+    robot_pose = pose_in_sketch_frame(geometry, pose)
+    robot_jacobian = jacobian_in_sketch_frame(geometry, jacobian)
+    if args.frame == "robot":
+        display_pose = robot_pose
+        display_jacobian = robot_jacobian
+        frame_label = "robot/sketch frame (AD = +30 deg from +Ox)"
+    else:
+        display_pose = pose
+        display_jacobian = jacobian
+        frame_label = "local AD solver frame"
     lower, upper = geometry.geometric_angle_limits_rad()
 
     print("DUK leg geometry")
@@ -60,26 +77,18 @@ def main() -> None:
         "  assembly branch used for this calculation: "
         f"{args.branch:+d}"
     )
+    print(f"  display frame: {frame_label}")
+    print(
+        "  configured AD orientation: "
+        f"{math.degrees(geometry.ad_orientation_rad):.3f} deg from +Ox"
+    )
     for name in ("A", "B", "C", "D", "H", "O"):
-        x, y = pose.point(name)
-        print(
-            f"  {name}: ({x:.3f}, {y:.3f}) mm "
-            "in local AD frame"
-        )
+        x, y = display_pose.point(name)
+        print(f"  {name}: ({x:.3f}, {y:.3f}) mm")
     print(
         "  dO/dalpha: "
-        f"({jacobian.d_o[0]:.3f}, "
-        f"{jacobian.d_o[1]:.3f}) mm/rad"
-    )
-
-    sketch_pose = pose_in_sketch_frame(
-        geometry,
-        pose,
-    )
-    print(
-        "  O in configured sketch frame: "
-        f"({sketch_pose.o[0]:.3f}, "
-        f"{sketch_pose.o[1]:.3f}) mm"
+        f"({display_jacobian.d_o[0]:.3f}, "
+        f"{display_jacobian.d_o[1]:.3f}) mm/rad"
     )
 
     if args.plot:
@@ -99,29 +108,40 @@ def main() -> None:
             180,
             assembly_branch=args.branch,
         )
+        if args.frame == "robot":
+            display_poses = tuple(
+                pose_in_sketch_frame(geometry, sampled_pose)
+                for sampled_pose in poses
+            )
+            jacobian_rotation = geometry.ad_orientation_rad
+        else:
+            display_poses = poses
+            jacobian_rotation = 0.0
+
         draw_leg_linkage(
-            pose,
+            display_pose,
             geometry,
         ).set_title(
-            "DUK leg linkage — local AD frame"
+            f"DUK leg linkage — {frame_label}"
         )
         draw_point_trajectories(
-            poses
+            display_poses
         ).set_title(
-            "DUK linkage point trajectories"
+            f"DUK linkage point trajectories — {args.frame} frame"
         )
         plot_point_coordinates(
-            poses,
+            display_poses,
             "O",
         ).set_title(
-            "Wheel-center coordinates vs input angle"
+            f"Wheel-center coordinates — {args.frame} frame"
         )
         plot_point_jacobian(
             geometry,
             poses,
             "O",
+            rotation_rad=jacobian_rotation,
         ).set_title(
-            "Wheel-center Jacobian vs input angle"
+            f"Wheel-center Jacobian — {args.frame} frame"
         )
         plt.show()
 
