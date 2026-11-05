@@ -408,10 +408,15 @@ def solve_leg_pose(
     if not math.isfinite(tolerance_mm) or tolerance_mm <= 0.0:
         raise ValueError("tolerance_mm must be finite and positive")
 
+    # Step 1 — derive the two points connected directly to A.
+    # A is the only fixed coordinate. D follows from AD and its fixed directed
+    # angle; B follows from AB and the current one-DOF coordinate q.
     a = (0.0, 0.0)
     d = geometry.d_point(a)
     b = geometry.b_point(linkage_angle_rad, a)
 
+    # Step 2 — enforce the physical side of AB relative to the fixed AD link.
+    # This is a topology check, not a numerical branch selector.
     ad = _sub(d, a)
     ab = _sub(b, a)
     b_side = _signed_side(ad, ab)
@@ -422,6 +427,8 @@ def solve_leg_pose(
             f"topology: expected {geometry.b_side_of_ad}"
         )
 
+    # Step 3 — solve C as the intersection of the B/BC and D/CD circles.
+    # The named side of directed B->D picks the physical assembly topology.
     bd = _sub(d, b)
     distance = _norm(bd)
     min_distance = abs(geometry.cd_mm - geometry.bc_mm)
@@ -474,6 +481,8 @@ def solve_leg_pose(
         ),
     )
 
+    # Step 4 — place H and O from the rigid BCO body. No additional degree
+    # of freedom exists here: once B and C are known, H and O are determined.
     h, o, e_bc, left_normal_bc = geometry.bco_body.place_from_bc(
         b,
         c,
@@ -508,6 +517,7 @@ def leg_jacobian(
             "singularity_tolerance must be finite and positive"
         )
 
+    # B is explicit in q, so its derivative is available directly.
     theta_ab = geometry.ab_angle_rad(
         pose.linkage_angle_rad
     )
@@ -518,6 +528,8 @@ def leg_jacobian(
         -geometry.ab_mm * math.cos(theta_ab),
     )
 
+    # C is implicit. Differentiate the two constant-length constraints
+    # |C-B|=BC and |C-D|=CD, then solve the resulting 2x2 linear system.
     r_bc = _sub(pose.c, pose.b)
     r_dc = _sub(pose.c, pose.d)
     rhs = _dot(r_bc, d_b)
@@ -536,6 +548,8 @@ def leg_jacobian(
         rhs * r_dc[1] / determinant,
         -rhs * r_dc[0] / determinant,
     )
+    # H/O derivatives follow from the same rigid BCO body transform used for
+    # their positions, which preserves BC/BO/CO at the velocity level too.
     d_h, d_o = geometry.bco_body.point_derivatives(
         d_b,
         d_c,
