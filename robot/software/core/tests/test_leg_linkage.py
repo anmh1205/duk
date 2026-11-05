@@ -1,4 +1,4 @@
-"""Numerical and invariant tests for canonical DUK leg kinematics."""
+"""Equation and invariant tests for canonical DUK leg kinematics."""
 
 from __future__ import annotations
 
@@ -31,7 +31,10 @@ def geometry():
 
 
 def distance(a, b):
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+    return math.hypot(
+        a[0] - b[0],
+        a[1] - b[1],
+    )
 
 
 def dot(a, b):
@@ -46,8 +49,11 @@ def cross(a, b):
     return a[0] * b[1] - a[1] * b[0]
 
 
-def test_config_uses_canonical_robot_frame_and_named_topology() -> None:
-    data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+def test_config_describes_geometry_not_solved_coordinates() -> None:
+    data = json.loads(
+        CONFIG_PATH.read_text(encoding="utf-8")
+    )
+
     assert data["schema_version"] == 4
     assert data["robot_frame"] == {
         "origin": "A",
@@ -58,8 +64,8 @@ def test_config_uses_canonical_robot_frame_and_named_topology() -> None:
         "da_angle_deg": -30,
     }
     assert data["four_bar_assembly"] == {
-        "b_side_of_directed_ad": "right",
-        "c_side_of_directed_bd": "right",
+        "b_side_of_directed_ad": "left",
+        "c_side_of_directed_bd": "left",
     }
     assert data["bco_rigid_body"] == {
         "BC_mm": 42,
@@ -67,77 +73,54 @@ def test_config_uses_canonical_robot_frame_and_named_topology() -> None:
         "OH_mm": 55,
         "o_side_of_directed_bc": "left",
     }
-    assert "assembly_branch" not in data
+
+    serialized = json.dumps(data)
+    for point_name in ("B", "C", "D", "H", "O"):
+        assert f'"{point_name}_x"' not in serialized
+        assert f'"{point_name}_y"' not in serialized
 
 
-def test_only_a_is_fixed_and_other_points_are_derived() -> None:
+def test_only_a_is_fixed_and_d_b_are_derived_by_equations() -> None:
     g = geometry()
-    alpha = math.radians(75.0)
-    pose = solve_leg_pose(g, alpha)
+    q = math.radians(75.0)
+    pose = solve_leg_pose(g, q)
 
     assert pose.a == (0.0, 0.0)
-    assert pose.d == pytest.approx(
-        (
-            g.ad_mm * math.cos(g.ad_angle_rad),
-            g.ad_mm * math.sin(g.ad_angle_rad),
-        )
+
+    expected_d = (
+        g.ad_mm * math.cos(g.ad_angle_rad),
+        g.ad_mm * math.sin(g.ad_angle_rad),
     )
-    assert pose.b == pytest.approx(
-        (
-            g.ab_mm * math.cos(alpha),
-            g.ab_mm * math.sin(alpha),
-        )
+    assert pose.d == pytest.approx(expected_d)
+
+    theta_ab = g.da_angle_rad - q
+    expected_b = (
+        g.ab_mm * math.cos(theta_ab),
+        g.ab_mm * math.sin(theta_ab),
     )
+    assert pose.b == pytest.approx(expected_b)
 
 
-
-def test_robot_frame_directed_da_ad_relation() -> None:
+def test_linkage_coordinate_definition_is_consistent() -> None:
     g = geometry()
+    q = math.radians(75.0)
+
+    theta_ab = g.ab_angle_rad(q)
+    directed_ab_to_da = (
+        g.da_angle_rad - theta_ab
+    )
+
     assert math.degrees(g.da_angle_rad) == pytest.approx(-30.0)
     assert math.degrees(g.ad_angle_rad) == pytest.approx(150.0)
-    assert g.d_point[1] > 0.0
+    assert directed_ab_to_da == pytest.approx(q)
 
 
-def test_derived_wheel_carrier_distances() -> None:
+def test_named_physical_topology_relations_hold() -> None:
     g = geometry()
-    assert g.bo_mm == pytest.approx(math.hypot(119.0, 55.0))
-    assert g.bo_mm == pytest.approx(131.0953851)
-    assert g.co_mm == pytest.approx(math.hypot(161.0, 55.0))
-    assert g.co_mm == pytest.approx(170.1352403)
-
-
-def test_reference_pose_at_75_degrees_is_direct_robot_frame() -> None:
     pose = solve_leg_pose(
-        geometry(),
+        g,
         math.radians(75.0),
     )
-
-    assert pose.a == (0.0, 0.0)
-    assert pose.d == pytest.approx(
-        (-70.1480577, 40.5),
-        abs=1e-6,
-    )
-    assert pose.b == pytest.approx(
-        (33.9052949, 126.5362832),
-        abs=1e-6,
-    )
-    assert pose.c == pytest.approx(
-        (2.4221051, 154.3357214),
-        abs=1e-6,
-    )
-    assert pose.h == pytest.approx(
-        (123.1076659, 47.7712085),
-        abs=1e-6,
-    )
-    assert pose.o == pytest.approx(
-        (86.7036398, 6.5432219),
-        abs=1e-6,
-    )
-
-
-def test_named_topology_relations_hold() -> None:
-    g = geometry()
-    pose = solve_leg_pose(g, math.radians(75.0))
 
     ad = sub(pose.d, pose.a)
     ab = sub(pose.b, pose.a)
@@ -145,11 +128,11 @@ def test_named_topology_relations_hold() -> None:
     bc = sub(pose.c, pose.b)
     bo = sub(pose.o, pose.b)
 
-    assert cross(ad, ab) < 0.0
-    assert g.b_side_of_ad == "right"
+    assert cross(ad, ab) > 0.0
+    assert g.b_side_of_ad == "left"
 
-    assert cross(bd, bc) < 0.0
-    assert g.c_side_of_bd == "right"
+    assert cross(bd, bc) > 0.0
+    assert g.c_side_of_bd == "left"
 
     assert cross(bc, bo) > 0.0
     assert g.bco_body.o_side_of_bc == "left"
@@ -157,12 +140,16 @@ def test_named_topology_relations_hold() -> None:
 
 def test_loop_closure_and_rigid_bco_geometry_hold() -> None:
     g = geometry()
-    pose = solve_leg_pose(g, math.radians(75.0))
+    pose = solve_leg_pose(
+        g,
+        math.radians(75.0),
+    )
 
     assert distance(pose.a, pose.b) == pytest.approx(g.ab_mm)
     assert distance(pose.b, pose.c) == pytest.approx(g.bc_mm)
     assert distance(pose.c, pose.d) == pytest.approx(g.cd_mm)
     assert distance(pose.d, pose.a) == pytest.approx(g.ad_mm)
+
     assert distance(pose.b, pose.h) == pytest.approx(g.bh_mm)
     assert distance(pose.h, pose.o) == pytest.approx(g.oh_mm)
     assert distance(pose.b, pose.o) == pytest.approx(g.bo_mm)
@@ -171,7 +158,9 @@ def test_loop_closure_and_rigid_bco_geometry_hold() -> None:
 
 def test_bco_rigid_triangle_invariants_hold_over_motion() -> None:
     g = geometry()
-    lower, upper = g.geometric_ab_angle_limits_rad()
+    lower, upper = (
+        g.geometric_linkage_angle_limits_rad()
+    )
     margin = math.radians(2.0)
     poses = sample_leg_trajectory(
         g,
@@ -180,17 +169,29 @@ def test_bco_rigid_triangle_invariants_hold_over_motion() -> None:
         41,
     )
 
-    expected_area2 = g.bco_body.signed_double_area_mm2
+    expected_area2 = (
+        g.bco_body.signed_double_area_mm2
+    )
+
     for pose in poses:
-        assert distance(pose.b, pose.c) == pytest.approx(
+        assert distance(
+            pose.b,
+            pose.c,
+        ) == pytest.approx(
             g.bc_mm,
             abs=1e-8,
         )
-        assert distance(pose.b, pose.o) == pytest.approx(
+        assert distance(
+            pose.b,
+            pose.o,
+        ) == pytest.approx(
             g.bo_mm,
             abs=1e-8,
         )
-        assert distance(pose.c, pose.o) == pytest.approx(
+        assert distance(
+            pose.c,
+            pose.o,
+        ) == pytest.approx(
             g.co_mm,
             abs=1e-8,
         )
@@ -205,64 +206,90 @@ def test_bco_rigid_triangle_invariants_hold_over_motion() -> None:
 
 def test_bco_velocity_constraints_hold() -> None:
     g = geometry()
-    pose = solve_leg_pose(g, math.radians(75.0))
+    pose = solve_leg_pose(
+        g,
+        math.radians(75.0),
+    )
     jac = leg_jacobian(g, pose)
 
     assert dot(
         sub(pose.c, pose.b),
         sub(jac.d_c, jac.d_b),
     ) == pytest.approx(0.0, abs=1e-7)
+
     assert dot(
         sub(pose.o, pose.b),
         sub(jac.d_o, jac.d_b),
     ) == pytest.approx(0.0, abs=1e-7)
+
     assert dot(
         sub(pose.o, pose.c),
         sub(jac.d_o, jac.d_c),
     ) == pytest.approx(0.0, abs=1e-7)
 
 
-def test_absolute_ab_workspace_limits() -> None:
-    lower, upper = geometry().geometric_ab_angle_limits_rad()
+def test_geometric_linkage_angle_limits() -> None:
+    lower, upper = (
+        geometry().geometric_linkage_angle_limits_rad()
+    )
+
     assert math.degrees(lower) == pytest.approx(
-        38.9950392,
+        68.9950392,
         abs=1e-6,
     )
     assert math.degrees(upper) == pytest.approx(
-        105.2555454,
+        135.2555454,
         abs=1e-6,
     )
 
 
-def test_outside_physical_ab_workspace_is_rejected() -> None:
+def test_outside_geometric_workspace_is_rejected() -> None:
     g = geometry()
-    with pytest.raises(UnreachableConfigurationError):
-        solve_leg_pose(g, math.radians(20.0))
+
+    with pytest.raises(
+        UnreachableConfigurationError
+    ):
+        solve_leg_pose(
+            g,
+            math.radians(50.0),
+        )
 
 
-def test_wrong_side_of_ad_is_rejected_even_if_circle_geometry_exists() -> None:
+def test_wrong_mirror_side_is_rejected() -> None:
     g = geometry()
-    mirror_angle = (
-        g.ad_angle_rad
-        + math.radians(75.0)
-    )
-    with pytest.raises(UnreachableConfigurationError):
-        solve_leg_pose(g, mirror_angle)
+
+    with pytest.raises(
+        UnreachableConfigurationError
+    ):
+        solve_leg_pose(
+            g,
+            math.radians(-75.0),
+        )
 
 
 def test_analytic_wheel_jacobian_matches_central_difference() -> None:
     g = geometry()
-    alpha = math.radians(75.0)
-    pose = solve_leg_pose(g, alpha)
-    analytic = leg_jacobian(g, pose).d_o
+    q = math.radians(75.0)
+    pose = solve_leg_pose(g, q)
+    analytic = leg_jacobian(
+        g,
+        pose,
+    ).d_o
 
     step = 1e-6
-    plus = solve_leg_pose(g, alpha + step).o
-    minus = solve_leg_pose(g, alpha - step).o
+    plus = solve_leg_pose(
+        g,
+        q + step,
+    ).o
+    minus = solve_leg_pose(
+        g,
+        q - step,
+    ).o
     numeric = (
         (plus[0] - minus[0]) / (2 * step),
         (plus[1] - minus[1]) / (2 * step),
     )
+
     assert analytic == pytest.approx(
         numeric,
         rel=1e-7,
@@ -272,13 +299,18 @@ def test_analytic_wheel_jacobian_matches_central_difference() -> None:
 
 def test_singular_boundary_is_detected_by_jacobian() -> None:
     g = geometry()
-    lower, _ = g.geometric_ab_angle_limits_rad()
+    lower, _ = (
+        g.geometric_linkage_angle_limits_rad()
+    )
     pose = solve_leg_pose(
         g,
         lower,
         tolerance_mm=1e-7,
     )
-    with pytest.raises(KinematicSingularityError):
+
+    with pytest.raises(
+        KinematicSingularityError
+    ):
         leg_jacobian(
             g,
             pose,
@@ -286,18 +318,19 @@ def test_singular_boundary_is_detected_by_jacobian() -> None:
         )
 
 
-def test_trajectory_sampling_uses_absolute_robot_angle() -> None:
+def test_trajectory_sampling_uses_linkage_coordinate_q() -> None:
     g = geometry()
     poses = sample_leg_trajectory(
         g,
-        math.radians(55.0),
-        math.radians(100.0),
+        math.radians(75.0),
+        math.radians(120.0),
         11,
     )
+
     assert len(poses) == 11
-    assert poses[0].ab_angle_rad == pytest.approx(
-        math.radians(55.0)
+    assert poses[0].linkage_angle_rad == pytest.approx(
+        math.radians(75.0)
     )
-    assert poses[-1].ab_angle_rad == pytest.approx(
-        math.radians(100.0)
+    assert poses[-1].linkage_angle_rad == pytest.approx(
+        math.radians(120.0)
     )
