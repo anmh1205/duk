@@ -49,13 +49,14 @@ def sub(a, b):
     return a[0] - b[0], a[1] - b[1]
 
 
-def test_config_keeps_assembly_branch_explicitly_unresolved() -> None:
+def test_config_defines_physical_assembly_branch() -> None:
     data = json.loads(
         CONFIG_PATH.read_text(
             encoding="utf-8"
         )
     )
-    assert data["assembly_branch"] is None
+    assert data["assembly_branch"] == -1
+    assert geometry().assembly_branch == -1
 
 
 def test_robot_frame_configuration_is_explicit_and_directed() -> None:
@@ -174,29 +175,34 @@ def test_loop_closure_and_wheel_offset_hold_for_both_branches(
     )
 
 
-def test_reference_branch_pose_at_75_degrees() -> None:
+def test_physical_branch_pose_at_75_degrees() -> None:
     g = geometry()
     pose = solve_leg_pose(
         g,
         math.radians(75.0),
-        assembly_branch=1,
     )
+    assert pose.assembly_branch == -1
     assert pose.b == pytest.approx(
         (33.9052949, 126.5362832),
         abs=1e-6,
     )
     assert pose.c == pytest.approx(
-        (75.0702561, 134.8697080),
+        (-2.6912318, 105.9281724),
         abs=1e-6,
     )
     assert pose.h == pytest.approx(
-        (-82.7287619, 102.9249131),
+        (137.5954540, 184.9259305),
         abs=1e-6,
     )
     assert pose.o == pytest.approx(
-        (-71.8159437, 49.0184163),
+        (110.6086422, 232.8499536),
         abs=1e-6,
     )
+
+    robot = pose_in_robot_frame(g, pose)
+    assert robot.c[0] > robot.b[0]
+    assert robot.o[0] < robot.b[0]
+    assert robot.o[1] < robot.b[1]
 
 
 def test_geometric_workspace_limits() -> None:
@@ -227,8 +233,7 @@ def test_outside_workspace_is_rejected() -> None:
         solve_leg_pose(
             g,
             math.radians(20.0),
-            assembly_branch=1,
-        )
+            )
 
 
 def test_analytic_wheel_jacobian_matches_central_difference() -> None:
@@ -237,7 +242,6 @@ def test_analytic_wheel_jacobian_matches_central_difference() -> None:
     pose = solve_leg_pose(
         g,
         alpha,
-        assembly_branch=1,
     )
     analytic = leg_jacobian(
         g,
@@ -247,12 +251,10 @@ def test_analytic_wheel_jacobian_matches_central_difference() -> None:
     plus = solve_leg_pose(
         g,
         alpha + step,
-        assembly_branch=1,
     ).o
     minus = solve_leg_pose(
         g,
         alpha - step,
-        assembly_branch=1,
     ).o
     numeric = (
         (plus[0] - minus[0])
@@ -275,7 +277,6 @@ def test_singular_boundary_is_detected_by_jacobian() -> None:
     pose = solve_leg_pose(
         g,
         lower,
-        assembly_branch=1,
         tolerance_mm=1e-7,
     )
     with pytest.raises(
@@ -295,7 +296,6 @@ def test_trajectory_sampling_and_robot_frame_convention() -> None:
         math.radians(55.0),
         math.radians(100.0),
         11,
-        assembly_branch=1,
     )
     assert len(poses) == 11
     assert (
@@ -347,7 +347,6 @@ def test_robot_frame_jacobian_matches_numeric_derivative() -> None:
     local_pose = solve_leg_pose(
         g,
         alpha,
-        assembly_branch=1,
     )
     local_jacobian = leg_jacobian(
         g,
@@ -364,16 +363,14 @@ def test_robot_frame_jacobian_matches_numeric_derivative() -> None:
         solve_leg_pose(
             g,
             alpha + step,
-            assembly_branch=1,
-        ),
+            ),
     ).o
     minus = pose_in_robot_frame(
         g,
         solve_leg_pose(
             g,
             alpha - step,
-            assembly_branch=1,
-        ),
+            ),
     ).o
     numeric = (
         (plus[0] - minus[0]) / (2 * step),
