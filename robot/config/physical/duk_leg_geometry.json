@@ -10,8 +10,8 @@
     "AD": 81
   },
   "four_bar_assembly": {
-    "b_side_of_directed_ad": "right",
-    "c_side_of_directed_bd": "right"
+    "b_side_of_directed_ad": "left",
+    "c_side_of_directed_bd": "left"
   },
   "bco_rigid_body": {
     "BC_mm": 42,
@@ -32,12 +32,14 @@
     "da_angle_deg": -30
   },
   "notes": [
-    "A, B, C, D, H and O are solved directly in the canonical robot frame; no display-time mirror or solver-to-robot rotation is part of the physical model.",
-    "The directed vector D->A has angle -30 degrees from +Ox, so A->D has angle +150 degrees and D is higher than A.",
-    "The pose variable ab_angle is the directed angle of A->B measured directly from robot +Ox; it is a geometric coordinate, not yet a calibrated motor encoder angle.",
-    "The physical four-bar topology places B on the right side of directed A->D and C on the right side of directed B->D.",
+    "A is the only fixed robot-frame point: A=(0,0). All other points are derived from lengths, directed angles, topology and the current linkage configuration.",
+    "The directed vector D->A has angle -30 degrees from +Ox; therefore A->D is the opposite direction.",
+    "The linkage configuration q is the directed counter-clockwise angle from A->B to D->A. Therefore theta_AB = theta_DA - q.",
+    "Point D is derived from A, AD and theta_AD. Point B is derived from A, AB and theta_AB.",
+    "Point C is selected from the intersection of the circle centered at B with radius BC and the circle centered at D with radius CD, using the configured physical side of directed B->D.",
     "B, C and O are fixed material points of one rigid wheel-carrier body.",
     "H and O are derived from the moving B->C basis: e_BC=(C-B)/BC, H=B-BH*e_BC, and O=H+OH*n_BC on the configured side of B->C.",
-    "H is an auxiliary construction point, not a joint or degree of freedom."
+    "H is an auxiliary construction point, not a joint or degree of freedom.",
+    "No mirror, solver-frame rotation, display correction, or fixed coordinates for B/C/D/H/O are part of the physical model."
   ]
 }
