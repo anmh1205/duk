@@ -1,4 +1,4 @@
-"""Fixed-body RViz bench. The loop is enforced by FK, not by robot dynamics."""
+"""Ground-contact RViz preview. The loop is enforced by FK, not by robot dynamics."""
 
 from pathlib import Path
 

@@ -7,8 +7,9 @@
 | Area | Current scope |
 | --- | --- |
 | `src/duk_core/modeling/leg_linkage.py` | Canonical robot-frame four-bar kinematics, rigid BCO carrier, workspace, analytic Jacobian and trajectories |
+| `src/duk_core/modeling/ground_contact.py` | Explicit rigid world placements: upright planar leg or heave/roll for both finite-width tires on flat ground |
 | `src/duk_core/modeling/leg_differential.py` | Analytic second derivatives, time acceleration and physical-branch inverse wheel position |
-| `src/duk_core/modeling/kinematic_bench.py` | Fixed-body two-leg preview profiles and geometric diagnostics, without physical parameters |
+| `src/duk_core/modeling/kinematic_bench.py` | Body-frame two-leg preview profiles and geometric diagnostics, without physical parameters |
 | `src/duk_core/modeling/planar_biped.py` | Candidate planar mass matrix, convective/gravity/damping forces, wheel reactions and optional contact constraints with unidentified symbols |
 | `src/duk_core/modeling/mass_properties.py` | Reusable planar mass-property composition for later dynamics |
 | `src/duk_core/visualization/leg_linkage.py` | Static Matplotlib mechanism, trajectory, coordinate and Jacobian plots |
@@ -64,7 +65,10 @@ Optional wheel-center trace:
 python robot/software/core/examples/duk_leg_motion.py --trace
 ```
 
-The live animation updates one mechanism pose at a time. It does not overlay a stack of historical poses unless an explicit trace is requested.
+The live animation updates one mechanism pose at a time, with the tire tangent
+to world ground z=0 and the body origin moving vertically. Canonical poses remain
+unchanged. Set `LegAnimationOptions(ground_contact=False)` only for an explicitly
+body-frame inspection. History is opt-in.
 
 Inspect the symbolic model without inventing measurements:
 

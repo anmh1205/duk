@@ -95,7 +95,6 @@ def main():
             try:
                 stamp = Time.from_msg(data["stamp"])
                 base = buffer.lookup_transform("world", "base_link", stamp)
-                height = base.transform.translation.z
                 for side, y in (("left", 0.145), ("right", -0.145)):
                     pose = solve_leg_pose(geometry, math.radians(data[side]["q_deg"]))
                     carrier = buffer.lookup_transform(
@@ -107,8 +106,12 @@ def main():
                     )
                     c_carrier = transform_point(carrier, (geometry.bc_mm / 1000, 0, 0))
                     c_cd = transform_point(cd, (geometry.cd_mm / 1000, 0, 0))
-                    expected_c = (pose.c[0] / 1000, y, height + pose.c[1] / 1000)
-                    expected_o = (pose.o[0] / 1000, y, height + pose.o[1] / 1000)
+                    expected_c = transform_point(
+                        base, (pose.c[0] / 1000, y, pose.c[1] / 1000)
+                    )
+                    expected_o = transform_point(
+                        base, (pose.o[0] / 1000, y, pose.o[1] / 1000)
+                    )
                     assert math.dist(c_carrier, c_cd) < 1e-9, (
                         "Rendered loop does not close at C"
                     )
@@ -116,6 +119,17 @@ def main():
                     assert (
                         math.dist(transform_point(wheel, (0, 0, 0)), expected_o) < 1e-9
                     )
+                    # A finite tilted cylinder touches at a rim/cap edge. Check
+                    # the actual world TF, independently of the reported gap.
+                    roll = 2 * math.atan2(
+                        base.transform.rotation.x, base.transform.rotation.w
+                    )
+                    cap = -0.018 if math.sin(roll) >= 0 else 0.018
+                    contact = transform_point(
+                        wheel, (0, cap, -geometry.wheel_radius_mm / 1000)
+                    )
+                    assert abs(contact[2]) < 1e-9, "Actual tire TF is off the ground"
+                    assert abs(data[side]["ground_gap_mm"]) < 1e-8
                 return True
             except TransformException:
                 return False
@@ -136,21 +150,30 @@ def main():
             assert data[side]["closure_error_mm"] < 1e-8
             assert data[side]["carrier_error_mm"] < 1e-8
             assert data[side]["carrier_area_error_mm2"] < 1e-7
-            assert abs(data[side]["wheel_vz_mm_s"]) > 0
+            assert abs(data[side]["wheel_vz_body_mm_s"]) > 0
+        wait_for(check_tf)
         assert controls(playing=False).successful
         wait_for(lambda: not data["left"]["playing"])
         frozen = (data["left"]["q_deg"], data["right"]["q_deg"])
         initial_time = data["left"]["profile_time_s"]
         wait_for(lambda: data["left"]["profile_time_s"] > initial_time + 0.4)
         assert frozen == (data["left"]["q_deg"], data["right"]["q_deg"])
-        assert data["left"]["wheel_vz_mm_s"] == data["right"]["wheel_vz_mm_s"] == 0
+        assert (
+            data["left"]["wheel_vz_body_mm_s"]
+            == data["right"]["wheel_vz_body_mm_s"]
+            == 0
+        )
         assert not controls(speed=3.0).successful
         wait_for(check_tf)
         assert controls(
             left_q_deg=75.0, right_q_deg=75.0, playing=False, speed=1.0
         ).successful
+        wait_for(
+            lambda: all(abs(data[s]["q_deg"] - 75) < 1e-8 for s in ("left", "right"))
+        )
+        wait_for(check_tf)
         print(
-            "Kinematic bench OK: independent poses; actual TF closes at C; invalid request atomic; auto motion; pause; speed validation"
+            "Kinematic bench OK: independent poses; actual TF closes at C and both tires touch ground; invalid request atomic; auto motion; pause; speed validation"
         )
     finally:
         node.destroy_subscription(subscription)

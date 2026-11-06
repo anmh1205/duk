@@ -61,14 +61,20 @@ notebook session were left separate.
 
 ### Local moving RViz bench (2026-11-06)
 
-The [fixed-body kinematic bench](../development/kinematic-bench.md) was exercised
-on the same Ubuntu 24.04 VMware guest with explicit software rendering. The
-rebuilt simulation image includes the Qt binding explicitly. Independent leg
-controls, auto/pause/speed, three live plots and actual TF closure at C were
-checked. The local test set passed 48 core/ROS tests and four configuration tests,
-including a headless Qt widget test. RViz showed about 19 FPS in one live GUI
-observation; this is not a sustained performance benchmark. The ROS integration
-script passed both without windows and with the real panel/RViz running.
+The [ground-contact kinematic bench](../development/kinematic-bench.md) was
+exercised on the same Ubuntu 24.04 VMware guest with explicit software rendering.
+Independent leg controls, auto/pause/speed, three body-frame plots and actual TF
+closure at C were checked. One common body heave/roll transform places both
+finite-width tires on z=0, including when leg angles differ. The integration
+check verifies the lowest tire points using actual timestamped TF, rather than
+only reading the reported gap.
+
+The local test set passed 59 core/ROS tests and four configuration tests,
+including a headless Qt widget test. Both notebooks were executed with grounded
+world views. RViz showed about 19 FPS in one live GUI observation; this is not a
+sustained performance benchmark. The ROS integration script passed both without
+windows and with the real panel/RViz running. The static Gazebo integration check
+also passed after the shared placement change.
 
 No mass/inertia, motor calibration, controller or contact law was added by this
 bench. Its spanning-tree URDF is a visualization representation, not a closed-loop

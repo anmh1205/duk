@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+from duk_core.modeling.ground_contact import place_leg_on_ground
 from duk_core.modeling.leg_linkage import (
     LegGeometry,
     LegPose,
@@ -31,11 +32,16 @@ def draw_leg_linkage(
     show_auxiliary: bool = True,
     show_rigid_carrier: bool = True,
     annotate: bool = True,
+    ground_contact: bool = True,
 ):
     """Draw one DUK leg pose with the rigid B-C-O carrier made explicit."""
     plt = _plt()
     if ax is None:
         _, ax = plt.subplots()
+
+    if ground_contact:
+        pose = place_leg_on_ground(geometry, pose)
+        ax.axhline(0, color="0.25", linewidth=1.5, label="ground z=0")
 
     # AB, CD and DA are ordinary four-bar links. BC belongs to the rigid
     # B-C-O wheel-carrier body and is drawn as an edge of that triangle below.
@@ -86,8 +92,8 @@ def draw_leg_linkage(
             ax.annotate(name, point, xytext=(5, 5), textcoords="offset points")
 
     ax.set_aspect("equal", adjustable="box")
-    ax.set_xlabel("x (mm)")
-    ax.set_ylabel("y (mm)")
+    ax.set_xlabel("world x (mm)" if ground_contact else "body x (mm)")
+    ax.set_ylabel("world z (mm)" if ground_contact else "body y (mm)")
     ax.grid(True)
     return ax
 
@@ -150,10 +156,7 @@ def plot_point_jacobian(
     if ax is None:
         _, ax = plt.subplots()
     angles = [math.degrees(pose.linkage_angle_rad) for pose in poses]
-    derivatives = [
-        leg_jacobian(geometry, pose).point(point_name)
-        for pose in poses
-    ]
+    derivatives = [leg_jacobian(geometry, pose).point(point_name) for pose in poses]
     ax.plot(
         angles,
         [value[0] for value in derivatives],

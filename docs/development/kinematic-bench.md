@@ -1,8 +1,9 @@
 # Two-leg RViz kinematic bench
 
-This is a fixed-body geometry inspection tool. Two independent canonical leg
-coordinates drive a coupled visualization tree in RViz. It does not run Gazebo,
-simulate loads/contact, select a controller, or send motor commands. Unknown
+This preview keeps both tires in geometric contact with flat ground at world
+z=0. Two independent canonical leg coordinates drive the mechanism; one common
+rigid body transform supplies heave and lateral roll. It does not run Gazebo,
+simulate contact forces, select a controller, or send motor commands. Unknown
 physical parameters remain untouched.
 
 ## Run
@@ -50,7 +51,7 @@ python3 tools/dev/duk-dev.py kinematics --headless
 - The table shows profile q/rates, wheel position/velocity/acceleration, loop
   closure error, BCO length and signed-area errors, distance to a geometric
   boundary, and the normalized loop determinant magnitude.
-- Three plots show world wheel X/Z position and calculated profile derivatives;
+- Three plots show body-frame wheel X/Z position and calculated relative derivatives;
   dashed lines are X, solid lines are Z, orange is left and cyan is right.
 
 The selectable interval excludes five degrees at each geometric endpoint. That
@@ -63,15 +64,35 @@ are zero and the UI clears history to avoid joining discontinuous poses. Pause
 and speed changes are inspection controls, not acceleration-limited motor
 commands. Automatic derivatives are analytic within each constant-speed segment.
 
-The body is fixed high enough to clear both wheels for every geometric pose,
-using AB+BO+wheel-radius plus 40 mm illustrative clearance. Ground contact is not
-imposed and the absolute wheel angles are held at zero. The tire markers make
-that convention visible. Body size, spacing and colors reuse the static preview;
-they do not become physical mass/CoM/mount measurements.
+The body is not fixed to the world. If both leg angles are equal, the body moves
+vertically so each wheel center stays at the wheel radius. Different leg angles
+require lateral body roll as well as heave; shifting the two wheels separately
+would deform the mechanism and is not used.
+
+The common transform solves both tire contact constraints. For cylindrical tires
+of radius R, width w, body roll ρ and leg-plane spacing S:
+
+- S sin(ρ) + (z_OL − z_OR) cos(ρ) = 0;
+- tire vertical extent = R cos(ρ) + (w/2)|sin(ρ)|;
+- body height is that extent minus the transformed mean local wheel height.
+
+The tire rim/cap edge, not merely the center, reaches z=0 when tilted. All links
+and mounts undergo the same rigid transform. Preview width/spacing are still
+illustrative, while leg lengths and wheel diameter come from canonical geometry.
+Absolute wheel spin remains zero in the body frame; normal contact alone does
+not impose rolling without slip.
+
+The table reports world wheel positions, tire/ground gap, body height and roll.
+The three plots and velocity/acceleration rows are explicitly **body-frame**
+quantities. Local vertical wheel motion is relative to the moving body and must
+not be read as world wheel lift. For equal leg poses the world wheel height is
+constant and its world vertical speed is zero. A tilted finite cylinder's center
+can change height slightly while its lowest surface point remains on the ground.
 
 ## Geometry and ROS ownership
 
-`duk_core.modeling.kinematic_bench` owns the profile and diagnostics, using the
+`duk_core.modeling.ground_contact` owns the explicit local-to-world placements.
+`duk_core.modeling.kinematic_bench` owns body-frame profiles/diagnostics, using the
 canonical solver, Jacobian and second derivatives. It does not duplicate the
 four-bar equations. `duk_description` owns the ROS adapter, visualization tree,
 RViz launch and Qt panel.
@@ -87,9 +108,9 @@ ROS interfaces are scoped to this virtual bench:
 | Interface | Content |
 | --- | --- |
 | `/duk/kinematics/joint_states` | Eight coupled visualization angles |
-| `/duk/kinematics/robot_description` | RViz tree, with a fixed world/body mount |
+| `/duk/kinematics/robot_description` | RViz internal tree; world/body transform comes from the contact placement |
 | `/duk/kinematics/diagnostics` | Calculated signals and geometry error metrics |
-| `/tf`, `/tf_static` | Moving/fixed visualization frames from robot_state_publisher |
+| `/tf`, `/tf_static` | Moving body transform from the preview node; internal frames from robot_state_publisher |
 
 The bench node `/duk/kinematics/bench` accepts atomic ROS parameters
 `left_q_deg`, `right_q_deg`, `playing` and `speed`. Pause before changing manual
@@ -107,7 +128,8 @@ python tools/environment-check/verify-kinematic-bench.py
 ```
 
 This script changes only the virtual preview. It checks independent poses,
-actual timestamped TF closure at C and the wheel center, atomic rejection,
+actual timestamped TF closure at C, wheel-center placement and lowest tire point
+at z=0, atomic rejection,
 automatic motion, pause and speed validation, then restores the reference pose.
 Unit tests independently reconstruct the URDF transforms and visual cylinder
 endpoints. A headless Qt test exercises real widgets, drawing, playback and pause.

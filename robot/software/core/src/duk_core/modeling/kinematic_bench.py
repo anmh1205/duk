@@ -1,4 +1,4 @@
-"""Fixed-body kinematic bench; no physical actuators, loads or contact model."""
+"""Body-relative kinematic profiles; world ground placement is a separate layer."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .leg_linkage import LegGeometry, LegPose, leg_jacobian, solve_leg_pose
 
 @dataclass(frozen=True, slots=True)
 class BenchSample:
-    """Calculated profile signals, not measured physical motion."""
+    """Calculated body-frame signals, not measured physical/world motion."""
 
     pose: LegPose
     q_dot_rad_s: float

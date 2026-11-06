@@ -1,4 +1,4 @@
-"""ROS adapter for the fixed-body kinematic bench, with an optional Qt panel."""
+"""ROS adapter for the ground-contact kinematic preview, with an optional Qt panel."""
 
 import json
 import math
@@ -8,12 +8,14 @@ import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from duk_core.modeling import load_leg_geometry_json
 from duk_core.modeling.kinematic_bench import KinematicBench
+from geometry_msgs.msg import TransformStamped
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from tf2_ros import TransformBroadcaster
 
-from .kinematic_description import bench_mount_height, joint_positions
+from .kinematic_description import joint_positions, preview_grounding
 
 
 class KinematicNode(Node):
@@ -23,8 +25,8 @@ class KinematicNode(Node):
             "geometry", "/workspace/robot/config/physical/duk_leg_geometry.json"
         ).value
         self.geometry = load_leg_geometry_json(path)
-        self.mount_height_m = bench_mount_height(self.geometry)
         self.bench = KinematicBench(self.geometry)
+        self.base_tf = TransformBroadcaster(self)
         self.declare_parameter("left_q_deg", 75.0)
         self.declare_parameter("right_q_deg", 75.0)
         self.declare_parameter("playing", False)
@@ -34,6 +36,10 @@ class KinematicNode(Node):
         self.last_time = time.monotonic()
         self.add_on_set_parameters_callback(self.set_controls)
         self.create_timer(0.05, self.tick)
+
+    @property
+    def ground(self):
+        return preview_grounding(self.geometry, *(s.pose for s in self.bench.samples))
 
     def set_controls(self, parameters):
         values = {p.name: p.value for p in parameters}
@@ -84,12 +90,22 @@ class KinematicNode(Node):
         )
         message = JointState()
         message.header.stamp = self.get_clock().now().to_msg()
+        ground = self.ground
+        base = TransformStamped()
+        base.header.stamp = message.header.stamp
+        base.header.frame_id = "world"
+        base.child_frame_id = "base_link"
+        base.transform.translation.z = ground.body_height_mm / 1000
+        base.transform.rotation.x = math.sin(ground.roll_rad / 2)
+        base.transform.rotation.w = math.cos(ground.roll_rad / 2)
+        self.base_tf.sendTransform(base)
         message.name = list(positions)
         message.position = list(positions.values())
         self.joints.publish(message)
         diagnostics = DiagnosticArray()
         diagnostics.header = message.header
         for side, sample in zip(("left", "right"), self.bench.samples):
+            world_o = ground.leg_point(sample.pose, side, "O")
             status = DiagnosticStatus(
                 name="kinematics/" + side, hardware_id="virtual_bench"
             )
@@ -109,10 +125,14 @@ class KinematicNode(Node):
                 "q_ddot_rad_s2": sample.q_ddot_rad_s2,
                 "wheel_x_mm": sample.pose.o[0],
                 "wheel_z_local_mm": sample.pose.o[1],
-                "wheel_vx_mm_s": sample.wheel_velocity_mm_s[0],
-                "wheel_vz_mm_s": sample.wheel_velocity_mm_s[1],
-                "wheel_ax_mm_s2": sample.wheel_acceleration_mm_s2[0],
-                "wheel_az_mm_s2": sample.wheel_acceleration_mm_s2[1],
+                "wheel_z_world_mm": world_o[2],
+                "ground_gap_mm": ground.ground_gap_mm(sample.pose, side),
+                "body_height_mm": ground.body_height_mm,
+                "body_roll_deg": math.degrees(ground.roll_rad),
+                "wheel_vx_body_mm_s": sample.wheel_velocity_mm_s[0],
+                "wheel_vz_body_mm_s": sample.wheel_velocity_mm_s[1],
+                "wheel_ax_body_mm_s2": sample.wheel_acceleration_mm_s2[0],
+                "wheel_az_body_mm_s2": sample.wheel_acceleration_mm_s2[1],
                 "closure_error_mm": sample.closure_error_mm,
                 "carrier_error_mm": sample.carrier_error_mm,
                 "carrier_area_error_mm2": sample.carrier_area_error_mm2,

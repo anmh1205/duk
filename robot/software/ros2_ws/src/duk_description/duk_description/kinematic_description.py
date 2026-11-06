@@ -8,13 +8,20 @@ import math
 from xml.etree import ElementTree as ET
 
 from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
+from duk_core.modeling.ground_contact import place_biped_on_ground
 
-from .preview import build_preview, numbers
+from .preview import LEG_PLANE_SPACING_M, WHEEL_WIDTH_M, build_preview, numbers
 
 
-def bench_mount_height(geometry):
-    """Guaranteed wheel clearance using the triangle inequality, not a contact law."""
-    return (geometry.ab_mm + geometry.bo_mm + geometry.wheel_radius_mm) / 1000 + 0.04
+def preview_grounding(geometry, left_pose, right_pose):
+    """One rigid body placement; preview spacing/width remain illustrative."""
+    return place_biped_on_ground(
+        geometry,
+        left_pose,
+        right_pose,
+        leg_spacing_mm=LEG_PLANE_SPACING_M * 1000,
+        wheel_width_mm=WHEEL_WIDTH_M * 1000,
+    )
 
 
 def joint_positions(geometry, left_q, right_q):
@@ -45,11 +52,11 @@ def build_kinematic_description(geometry_path):
     urdf, _, metadata = build_preview(geometry_path, 75)
     robot = ET.fromstring(urdf)
     robot.set("name", "duk_kinematic_bench")
-    # Triangle inequality bounds every possible O reach; leave visible clearance.
-    height = bench_mount_height(geometry)
-    robot.find("joint[@name='preview_mount']/origin").set(
-        "xyz", numbers((0, 0, height))
-    )
+    # robot_state_publisher owns the internal tree; the bench broadcasts the
+    # moving world->base_link transform obtained from the two contact constraints.
+    robot.remove(robot.find("joint[@name='preview_mount']"))
+    robot.remove(robot.find("link[@name='world']"))
+    height = preview_grounding(geometry, pose, pose).body_height_mm / 1000
     ab = math.atan2(pose.b[1], pose.b[0])
     carrier = math.atan2(pose.c[1] - pose.b[1], pose.c[0] - pose.b[0])
     dc = math.atan2(pose.c[1] - pose.d[1], pose.c[0] - pose.d[0])

@@ -228,3 +228,16 @@ for symbolic algebra. These sources establish methods, not DUK physical data.
 The Gazebo robot remains a static rendering test until mass/actuator/contact
 properties and dynamics integration are independently established. No controller
 or physical-platform capability is selected by these equations.
+
+## Grounded visualization frames
+
+A=(0,0) is a body-frame convention, not a world constraint. The planar notebook
+placement is z_A = R − O_local.y, giving z_O=R and a tire tangent to ground z=0.
+It translates the entire mechanism, so all link/carrier invariants remain intact.
+
+The two-leg RViz preview additionally solves lateral body roll when qL and qR
+differ; its finite-width cylindrical tires are both tangent to the ground. See
+the [grounded preview](../development/kinematic-bench.md) for the geometric
+constraints and frame labels. This 3D visualization placement is **not** a new
+roll dynamics model: the candidate 7-DOF dynamics above remains sagittal. Contact
+forces, impacts, tire compliance and no-slip rolling have not been established.

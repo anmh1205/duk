@@ -17,7 +17,7 @@ def run_panel(node):
         def __init__(self):
             super().__init__()
             self.setWindowTitle("DUK — Bàn thử động học hai chân")
-            self.resize(850, 940)
+            self.resize(850, 1000)
             self.setStyleSheet("""
                 QWidget {font-family: 'DejaVu Sans'; font-size: 12px; color: #172a3a; background: #f5f7fa;}
                 QGroupBox {font-weight: bold; border: 1px solid #d8dfe8; border-radius: 6px; margin-top: 10px; padding: 10px;}
@@ -33,7 +33,7 @@ def run_panel(node):
             layout.addWidget(title)
             layout.addWidget(
                 QtWidgets.QLabel(
-                    "Thân gá cố định · Không ép bánh chạm đất · Góc q theo cơ cấu chuẩn"
+                    "Hai bánh tiếp xúc sàn · Thân đổi cao độ / nghiêng theo hình học"
                 )
             )
             controls = QtWidgets.QGroupBox("Tư thế và chuyển động thử")
@@ -93,21 +93,24 @@ def run_panel(node):
             self.status = QtWidgets.QLabel()
             self.status.setWordWrap(True)
             layout.addWidget(self.status)
+            self.body_status = QtWidgets.QLabel()
+            layout.addWidget(self.body_status)
             labels = [
                 "q (°)",
                 "dq/dt (rad/s)",
                 "d²q/dt² (rad/s²)",
                 "Tâm bánh X (mm)",
                 "Tâm bánh Z world (mm)",
-                "Vx (mm/s)",
-                "Vz (mm/s)",
-                "Ax (mm/s²)",
-                "Az (mm/s²)",
+                "Vx gắn thân (mm/s)",
+                "Vz gắn thân (mm/s)",
+                "Ax gắn thân (mm/s²)",
+                "Az gắn thân (mm/s²)",
                 "Sai số khép kín (mm)",
                 "Sai số chiều dài BCO (mm)",
                 "Sai số 2×diện tích BCO (mm²)",
                 "Còn tới biên hình học (°)",
                 "|sin góc BC/CD| (0 = kỳ dị)",
+                "Khe hở bánh / sàn (mm)",
             ]
             self.table = QtWidgets.QTableWidget(len(labels), 3)
             self.table.setHorizontalHeaderLabels(
@@ -130,13 +133,19 @@ def run_panel(node):
                 for column in (1, 2):
                     self.table.setItem(row, column, QtWidgets.QTableWidgetItem("0"))
                 self.table.setRowHeight(row, 22)
-            self.table.setMinimumHeight(340)
+            self.table.setMinimumHeight(360)
             layout.addWidget(self.table)
             self.figure = Figure(figsize=(8, 3.5), dpi=90, layout="constrained")
+            self.figure.suptitle("Tọa độ và đạo hàm trong hệ gắn thân", fontsize=9)
             self.axes = self.figure.subplots(3, 1, sharex=True)
             self.lines = []
             for axis, label in zip(
-                self.axes, ("Vị trí (mm)", "Vận tốc (mm/s)", "Gia tốc (mm/s²)")
+                self.axes,
+                (
+                    "Vị trí\n(mm)",
+                    "Vận tốc\n(mm/s)",
+                    "Gia tốc\n(mm/s²)",
+                ),
             ):
                 axis.set_ylabel(label, fontsize=8)
                 axis.grid(alpha=0.2)
@@ -159,7 +168,7 @@ def run_panel(node):
             layout.addWidget(self.canvas, 1)
             layout.addWidget(
                 QtWidgets.QLabel(
-                    "Vận tốc/gia tốc là đạo hàm profile khi chạy; chỉnh tay là đặt tư thế. Nét đứt: X · Nét liền: Z."
+                    "Đồ thị: hệ gắn thân. Bảng: vị trí world và khe hở sàn. Chưa mô phỏng lực hay lăn không trượt."
                 )
             )
             self.history = deque(maxlen=200)
@@ -196,7 +205,13 @@ def run_panel(node):
                 self.history.clear()
                 self.pose_revision = node.bench.pose_revision
             samples = node.bench.samples
+            ground = node.ground
+            self.body_status.setText(
+                f"Thân cao {ground.body_height_mm:.2f} mm · Nghiêng ngang {math.degrees(ground.roll_rad):+.2f}° · Sàn z=0"
+            )
             for side, sample in enumerate(samples):
+                side_name = "left" if side == 0 else "right"
+                world_o = ground.leg_point(sample.pose, side_name, "O")
                 angle = math.degrees(sample.pose.linkage_angle_rad)
                 for widget, value in (
                     (self.sliders[side], round(angle * 100)),
@@ -210,7 +225,7 @@ def run_panel(node):
                     sample.q_dot_rad_s,
                     sample.q_ddot_rad_s2,
                     sample.pose.o[0],
-                    sample.pose.o[1] + node.mount_height_m * 1000,
+                    world_o[2],
                     *sample.wheel_velocity_mm_s,
                     *sample.wheel_acceleration_mm_s2,
                     sample.closure_error_mm,
@@ -218,6 +233,7 @@ def run_panel(node):
                     sample.carrier_area_error_mm2,
                     math.degrees(sample.boundary_margin_rad),
                     sample.loop_sine,
+                    ground.ground_gap_mm(sample.pose, side_name),
                 ]
                 for row, value in enumerate(values):
                     self.table.item(row, side + 1).setText(
@@ -237,7 +253,7 @@ def run_panel(node):
                 or (
                     "Chú ý: chân " + ", ".join(near) + " gần biên hình học."
                     if near
-                    else "Hình học hợp lệ · BCO giữ nguyên kích thước · Thân đứng yên"
+                    else "Hình học hợp lệ · BCO giữ nguyên kích thước · Hai bánh chạm sàn"
                 )
             )
             self.status.setStyleSheet(
@@ -248,7 +264,7 @@ def run_panel(node):
                 row.extend(
                     [
                         sample.pose.o[0],
-                        sample.pose.o[1] + node.mount_height_m * 1000,
+                        sample.pose.o[1],
                         *sample.wheel_velocity_mm_s,
                         *sample.wheel_acceleration_mm_s2,
                     ]

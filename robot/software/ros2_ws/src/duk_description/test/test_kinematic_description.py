@@ -9,6 +9,7 @@ from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
 from duk_description.kinematic_description import (
     build_kinematic_description,
     joint_positions,
+    preview_grounding,
 )
 
 ROOT = next(
@@ -48,8 +49,8 @@ def point(matrix, value):
     )
 
 
-def urdf_transforms(robot, positions):
-    result = {"world": transform()}
+def urdf_transforms(robot, positions, base_transform):
+    result = {"base_link": base_transform}
     joints = list(robot.findall("joint"))
     while joints:
         count = len(joints)
@@ -86,15 +87,20 @@ def urdf_transforms(robot, positions):
 @pytest.mark.parametrize("angles", [(75, 75), (78, 95), (105, 80), (120, 110)])
 def test_displayed_links_wheel_and_cut_joint_close_at_each_pose(angles):
     geometry = load_leg_geometry_json(CONFIG)
-    urdf, height = build_kinematic_description(CONFIG)
+    urdf, _ = build_kinematic_description(CONFIG)
     robot = ET.fromstring(urdf)
     positions = joint_positions(geometry, *(math.radians(a) for a in angles))
-    matrices = urdf_transforms(robot, positions)
+    poses = [solve_leg_pose(geometry, math.radians(a)) for a in angles]
+    ground = preview_grounding(geometry, *poses)
+    matrices = urdf_transforms(
+        robot,
+        positions,
+        transform((0, 0, ground.body_height_mm / 1000), (ground.roll_rad, 0, 0)),
+    )
     assert len(positions) == 8
-    for side, angle, y in zip(("left", "right"), angles, (0.145, -0.145)):
-        pose = solve_leg_pose(geometry, math.radians(angle))
+    for side, pose in zip(("left", "right"), poses):
         expected = {
-            name: (pose.point(name)[0] / 1000, y, pose.point(name)[1] / 1000 + height)
+            name: tuple(v / 1000 for v in ground.leg_point(pose, side, name))
             for name in ("A", "B", "C", "D", "O")
         }
         assert point(matrices[side + "_ab_frame"], (0, 0, 0)) == pytest.approx(
@@ -112,7 +118,7 @@ def test_displayed_links_wheel_and_cut_joint_close_at_each_pose(angles):
         assert point(matrices[side + "_wheel_frame"], (0, 0, 0)) == pytest.approx(
             expected["O"], abs=1e-11
         )
-        assert expected["O"][2] - geometry.wheel_radius_mm / 1000 >= 0.04 - 1e-12
+        assert ground.ground_gap_mm(pose, side) == pytest.approx(0, abs=1e-10)
         # Verify the actual visual cylinder endpoints, not just moving frame names.
         for part, endpoints in (
             ("AB", ("A", "B")),

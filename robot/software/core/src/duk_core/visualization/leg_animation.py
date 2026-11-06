@@ -11,10 +11,11 @@ rather than a stack of overlaid snapshots.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-import math
 
+from duk_core.modeling.ground_contact import GroundedLegPose, place_leg_on_ground
 from duk_core.modeling.leg_linkage import (
     LegGeometry,
     LegPose,
@@ -29,6 +30,7 @@ class LegAnimation:
     animation: object
     figure: object
     poses: tuple[LegPose, ...]
+    display_poses: tuple[LegPose | GroundedLegPose, ...]
 
     def to_jshtml(self) -> str:
         """Render the animation as an interactive Jupyter HTML player."""
@@ -45,6 +47,7 @@ class LegAnimationOptions:
     show_labels: bool = True
     show_wheel_trace: bool = False
     padding_mm: float = 25.0
+    ground_contact: bool = True
 
     def __post_init__(self) -> None:
         if self.interval_ms <= 0:
@@ -68,7 +71,7 @@ def _matplotlib():
 
 
 def _motion_bounds(
-    poses: Sequence[LegPose],
+    poses: Sequence[LegPose | GroundedLegPose],
     geometry: LegGeometry,
     padding_mm: float,
 ) -> tuple[float, float, float, float]:
@@ -119,29 +122,34 @@ def create_leg_animation(
     The returned FuncAnimation can be shown in Jupyter with
     HTML(animation.to_jshtml()), which provides play/pause and scrub controls.
 
+    Ground contact places the complete solved leg in the world at each frame;
+    A is fixed only in its body frame. `poses` remain canonical; `display_poses`
+    contain the explicit world placements.
+
     Only the canonical solver computes A/B/C/D/H/O. This function updates
     artists from solved poses and does not duplicate robot mathematics.
     """
     if len(linkage_angles_rad) < 2:
-        raise ValueError(
-            "linkage_angles_rad must contain at least two frames"
-        )
+        raise ValueError("linkage_angles_rad must contain at least two frames")
 
     options = options or LegAnimationOptions()
     plt, FuncAnimation, Circle, Polygon = _matplotlib()
 
     # Pre-solve every frame once. Playback then only updates artists, which
     # keeps motion smooth and avoids solving repeatedly inside the GUI loop.
-    poses = tuple(
-        solve_leg_pose(geometry, float(q))
-        for q in linkage_angles_rad
+    poses = tuple(solve_leg_pose(geometry, float(q)) for q in linkage_angles_rad)
+
+    display_poses = (
+        tuple(place_leg_on_ground(geometry, p) for p in poses)
+        if options.ground_contact
+        else poses
     )
 
     if ax is None:
         _, ax = plt.subplots(figsize=(8, 8))
 
     x_min, x_max, y_min, y_max = _motion_bounds(
-        poses,
+        display_poses,
         geometry,
         options.padding_mm,
     )
@@ -149,10 +157,12 @@ def create_leg_animation(
     ax.set_ylim(y_min, y_max)
     ax.set_aspect("equal", adjustable="box")
     ax.grid(True)
-    ax.set_xlabel("x (mm)")
-    ax.set_ylabel("y (mm)")
+    ax.set_xlabel("world x (mm)" if options.ground_contact else "body x (mm)")
+    ax.set_ylabel("world z (mm)" if options.ground_contact else "body y (mm)")
+    if options.ground_contact:
+        ax.axhline(0, color="0.25", linewidth=1.5, label="ground z=0")
 
-    first = poses[0]
+    first = display_poses[0]
 
     # AB, CD and DA are ordinary links. BC is deliberately not drawn as a
     # separate bar because B-C-O is one rigid carrier body.
@@ -252,7 +262,7 @@ def create_leg_animation(
 
     def update(frame_index: int):
         """Move every artist to the solved pose for one animation frame."""
-        pose = poses[frame_index]
+        pose = display_poses[frame_index]
 
         line_ab.set_data(
             (pose.a[0], pose.b[0]),
@@ -304,8 +314,7 @@ def create_leg_animation(
                 annotation.xy = pose.point(point_name)
 
         title.set_text(
-            "DUK leg motion — "
-            f"q={math.degrees(pose.linkage_angle_rad):.2f}°"
+            f"DUK leg motion — q={math.degrees(pose.linkage_angle_rad):.2f}°"
         )
 
         artists = [
@@ -336,4 +345,5 @@ def create_leg_animation(
         animation=animation,
         figure=ax.figure,
         poses=poses,
+        display_poses=display_poses,
     )

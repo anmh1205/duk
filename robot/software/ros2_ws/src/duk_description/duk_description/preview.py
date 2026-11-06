@@ -12,6 +12,10 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
+from duk_core.modeling.ground_contact import place_leg_on_ground
+
+LEG_PLANE_SPACING_M = 0.29
+WHEEL_WIDTH_M = 0.036
 
 
 def numbers(values):
@@ -21,7 +25,7 @@ def numbers(values):
 def build_preview(geometry_path, q_deg=75.0):
     geometry = load_leg_geometry_json(geometry_path)
     pose = solve_leg_pose(geometry, math.radians(q_deg))
-    mount_height = (geometry.wheel_radius_mm - pose.o[1]) / 1000
+    mount_height = place_leg_on_ground(geometry, pose).body_height_mm / 1000
     robot = ET.Element("robot", name="duk_preview")
     ET.SubElement(robot, "link", name="world")
     ET.SubElement(robot, "link", name="base_link")
@@ -95,7 +99,10 @@ def build_preview(geometry_path, q_deg=75.0):
         (0.12, 0.75, 0.85, 1),
     )
     leg_points = {}
-    for side, y in (("left", 0.145), ("right", -0.145)):
+    for side, y in (
+        ("left", LEG_PLANE_SPACING_M / 2),
+        ("right", -LEG_PLANE_SPACING_M / 2),
+    ):
         points = {
             name: (pose.point(name)[0] / 1000, y, pose.point(name)[1] / 1000)
             for name in ("A", "B", "C", "D", "H", "O")
@@ -136,7 +143,7 @@ def build_preview(geometry_path, q_deg=75.0):
         primitive(
             side + "_wheel",
             "cylinder",
-            (geometry.wheel_radius_mm / 1000, 0.036),
+            (geometry.wheel_radius_mm / 1000, WHEEL_WIDTH_M),
             points["O"],
             (math.pi / 2, 0, 0),
             (0.045, 0.05, 0.06, 1),
@@ -155,7 +162,8 @@ def build_preview(geometry_path, q_deg=75.0):
         "geometry_source": str(Path(geometry_path).resolve()),
         "q_deg": q_deg,
         "body_size_m": [0.20, 0.24, 0.14],
-        "leg_plane_spacing_m": 0.29,
+        "leg_plane_spacing_m": LEG_PLANE_SPACING_M,
+        "wheel_width_m": WHEEL_WIDTH_M,
         "points_world_m": leg_points,
         "wheel_radius_m": geometry.wheel_radius_mm / 1000,
         "mount_height_m": mount_height,
