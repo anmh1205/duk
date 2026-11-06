@@ -51,6 +51,7 @@ jobs:
         run: |
           docker compose -f compose.yaml -f environment/compose/simulation.yaml \
             -f .local/simulation/compose.json exec -T dev bash -lc '
+              source /opt/ros/jazzy/setup.bash &&
               bash tools/environment-check/verify-simulation-container.sh &&
               PYTHONPATH="$PYTHONPATH:/workspace/robot/software/ros2_ws/src/duk_description" \
               python -m pytest -q robot/software/ros2_ws/src/duk_description/test
@@ -65,9 +66,19 @@ jobs:
               source /opt/ros/jazzy/setup.bash &&
               python tools/environment-check/verify-simulation-preview.py
             '
+      - name: Verify moving RViz bench without windows
+        run: |
+          python3 tools/dev/duk-dev.py kinematics --headless > /tmp/duk-kinematics.log 2>&1 &
+          launch_pid=$!
+          trap 'python3 tools/dev/duk-dev.py stop; wait "$launch_pid" || true' EXIT
+          docker compose -f compose.yaml -f environment/compose/simulation.yaml \
+            -f .local/simulation/compose.json exec -T dev bash -lc '
+              source /opt/ros/jazzy/setup.bash &&
+              python tools/environment-check/verify-kinematic-bench.py
+            '
       - name: Show preview diagnostics on failure
         if: failure()
-        run: cat /tmp/duk-preview.log 2>/dev/null || true
+        run: cat /tmp/duk-preview.log /tmp/duk-kinematics.log 2>/dev/null || true
       - name: Tear down
         if: always()
         run: python3 tools/dev/duk-dev.py down

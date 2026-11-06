@@ -103,6 +103,7 @@ RUN test "${ROS_DISTRO}" = jazzy \
         ros-jazzy-rviz2 \
         ros-jazzy-ros-gz \
         ros-jazzy-robot-state-publisher \
+        ros-jazzy-python-qt-binding \
         mesa-utils \
         xauth \
     && rm -rf /var/lib/apt/lists/*

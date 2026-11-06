@@ -8,6 +8,7 @@
 | --- | --- |
 | `src/duk_core/modeling/leg_linkage.py` | Canonical robot-frame four-bar kinematics, rigid BCO carrier, workspace, analytic Jacobian and trajectories |
 | `src/duk_core/modeling/leg_differential.py` | Analytic second derivatives, time acceleration and physical-branch inverse wheel position |
+| `src/duk_core/modeling/kinematic_bench.py` | Fixed-body two-leg preview profiles and geometric diagnostics, without physical parameters |
 | `src/duk_core/modeling/planar_biped.py` | Candidate planar mass matrix, convective/gravity/damping forces, wheel reactions and optional contact constraints with unidentified symbols |
 | `src/duk_core/modeling/mass_properties.py` | Reusable planar mass-property composition for later dynamics |
 | `src/duk_core/visualization/leg_linkage.py` | Static Matplotlib mechanism, trajectory, coordinate and Jacobian plots |

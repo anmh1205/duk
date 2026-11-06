@@ -1,5 +1,9 @@
 # VMware Gazebo / RViz preview
 
+For moving legs, independent angle controls and calculated motion plots, use the
+separate [RViz kinematic bench](kinematic-bench.md). This page describes the static
+Gazebo/RViz environment smoke test.
+
 This opt-in ROS 2 Jazzy / Gazebo Harmonic environment exercises local Linux
 X11/XWayland graphics. The default Compose and Dev Container environment remains
 available. The preview uses the same development service and Dockerfile, with a

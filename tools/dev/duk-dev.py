@@ -192,6 +192,7 @@ def main():
             "stop",
             "doctor",
             "demo",
+            "kinematics",
             "shell",
         ],
     )
@@ -199,7 +200,14 @@ def main():
     parser.add_argument("--gpu", choices=["auto", "dri", "software"])
     parser.add_argument("--gui", choices=["x11", "none"])
     parser.add_argument(
-        "--headless", action="store_true", help="demo: do not open Gazebo GUI or RViz"
+        "--no-build",
+        action="store_true",
+        help="up: reuse an already-built dependency image",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="demo/kinematics: do not open preview windows",
     )
     parser.add_argument(
         "--angle-deg",
@@ -207,10 +215,14 @@ def main():
         help="demo: canonical linkage q, in degrees (default 75)",
     )
     args = parser.parse_args()
+    if args.no_build and args.command != "up":
+        parser.error("--no-build belongs to up")
     if args.command != "configure" and any([args.preset, args.gpu, args.gui]):
         parser.error("--preset/--gpu/--gui belong to configure")
-    if args.command != "demo" and (args.headless or args.angle_deg is not None):
-        parser.error("--headless/--angle-deg belong to demo")
+    if args.command not in ("demo", "kinematics") and args.headless:
+        parser.error("--headless belongs to demo or kinematics")
+    if args.command != "demo" and args.angle_deg is not None:
+        parser.error("--angle-deg belongs to demo")
     if args.angle_deg is not None and not math.isfinite(args.angle_deg):
         parser.error("--angle-deg must be finite")
     if args.command == "configure":
@@ -241,7 +253,8 @@ def main():
                 "pid=int(p.read_text()) if p.exists() else 0; "
                 "c=Path(f'/proc/{pid}/cmdline'); "
                 "cmd=c.read_bytes() if c.exists() else b''; "
-                "os.kill(pid, signal.SIGINT) if b'preview.launch.py' in cmd and b'duk_gazebo' in cmd else None"
+                "expected=(b'preview.launch.py' in cmd and b'duk_gazebo' in cmd) or (b'kinematics.launch.py' in cmd and b'duk_description' in cmd); "
+                "os.kill(pid, signal.SIGINT) if expected else None"
             )
             compose("exec", "-T", "dev", "python3", "-c", code)
     else:
@@ -249,7 +262,9 @@ def main():
         if args.command == "build":
             compose("build", "dev")
         elif args.command == "up":
-            compose("up", "-d", "--build", "--wait", "dev")
+            compose(
+                "up", "-d", *([] if args.no_build else ["--build"]), "--wait", "dev"
+            )
         elif args.command == "shell":
             compose("exec", "dev", "bash")
         elif args.command == "doctor":
@@ -261,12 +276,17 @@ def main():
                 "-lc",
                 'source /opt/ros/jazzy/setup.bash && bash /workspace/tools/environment-check/verify-dev-container.sh --quick && command -v rviz2 gz && if [ "$DUK_GUI_MODE" = x11 ]; then glxinfo -B; fi',
             )
-        elif args.command == "demo":
+        elif args.command in ("demo", "kinematics"):
             headless = args.headless or settings()["gui"] == "none"
-            launch = (
-                "echo $$ > /tmp/duk-preview-launch.pid && "
-                f"exec ros2 launch duk_gazebo preview.launch.py q_deg:={75.0 if args.angle_deg is None else args.angle_deg} "
+            is_kinematic = args.command == "kinematics"
+            target = (
+                f"duk_description kinematics.launch.py gui:={'false' if headless else 'true'}"
+                if is_kinematic
+                else f"duk_gazebo preview.launch.py q_deg:={75.0 if args.angle_deg is None else args.angle_deg} "
                 f"gui:={'false' if headless else 'true'} rviz:={'false' if headless else 'true'}"
+            )
+            launch = (
+                "echo $$ > /tmp/duk-preview-launch.pid && exec ros2 launch " + target
             )
             command = (
                 "source /opt/ros/jazzy/setup.bash && "

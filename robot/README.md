@@ -18,5 +18,7 @@ The directories reserve engineering ownership; their contents determine which su
 [static Gazebo/RViz preview](../docs/development/simulation-preview.md) using the
 canonical leg geometry. This establishes rendering and geometry integration,
 not robot dynamics, controllers or hardware support.
+The [moving RViz bench](../docs/development/kinematic-bench.md) adds independent
+leg angles and calculated profile diagnostics while retaining a fixed body.
 
 [Repository layout](../docs/architecture/repository-layout.md) · [Hardware documents](../docs/hardware/README.md) · [Software documents](../docs/software/README.md).

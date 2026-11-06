@@ -59,6 +59,21 @@ This does not validate balance, closed-loop linkage dynamics, contact behavior
 or a moving robot's performance. The base development container and its running
 notebook session were left separate.
 
+### Local moving RViz bench (2026-11-06)
+
+The [fixed-body kinematic bench](../development/kinematic-bench.md) was exercised
+on the same Ubuntu 24.04 VMware guest with explicit software rendering. The
+rebuilt simulation image includes the Qt binding explicitly. Independent leg
+controls, auto/pause/speed, three live plots and actual TF closure at C were
+checked. The local test set passed 48 core/ROS tests and four configuration tests,
+including a headless Qt widget test. RViz showed about 19 FPS in one live GUI
+observation; this is not a sustained performance benchmark. The ROS integration
+script passed both without windows and with the real panel/RViz running.
+
+No mass/inertia, motor calibration, controller or contact law was added by this
+bench. Its spanning-tree URDF is a visualization representation, not a closed-loop
+dynamics model. These observations do not extend GPU or physical-platform support.
+
 ## Not yet established
 
 The base development environment does not currently claim validated support for:
