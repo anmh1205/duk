@@ -21,7 +21,9 @@ research = [
   "sympy>=1.12,<2",
   "matplotlib>=3.8,<4",
   "jupyterlab>=4,<5",
-  "ipywidgets>=8,<9"
+  "ipywidgets>=8,<9",
+  "nbclient>=0.10,<1",
+  "ipykernel>=6,<8"
 ]
 
 [tool.setuptools.packages.find]

@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - "robot/config/physical/**"
+      - "research/experiments/duk-v3/**"
       - "robot/software/core/**"
       - ".github/workflows/python-core.yml"
   pull_request:
     paths:
       - "robot/config/physical/**"
+      - "research/experiments/duk-v3/**"
       - "robot/software/core/**"
       - ".github/workflows/python-core.yml"
   workflow_dispatch:
@@ -37,7 +39,7 @@ jobs:
           cache: pip
           cache-dependency-path: robot/software/core/pyproject.toml
       - name: Install core and test dependencies
-        run: python -m pip install -e "./robot/software/core[test,symbolic]"
+        run: python -m pip install -e "./robot/software/core[test,research]"
       - name: Run unit tests
         run: python -m pytest -q robot/software/core/tests
       - name: Run DUK leg-kinematics example
@@ -46,3 +48,7 @@ jobs:
         run: python robot/software/core/examples/duk_planar_model.py
       - name: Compile Python sources
         run: python -m compileall -q robot/software/core/src
+      - name: Execute DUK v3 notebooks in fresh kernels
+        env:
+          OPENBLAS_NUM_THREADS: "1"
+        run: python robot/software/core/examples/run_duk_notebooks.py

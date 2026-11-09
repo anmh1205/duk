@@ -79,17 +79,35 @@ python robot/software/core/examples/duk_planar_model.py
 Use `--parameters .local/planar-parameters.json` to bind a partial set of identified
 values; unknown/null values stay symbolic. See the [parameter template](../../config/physical/duk_planar_parameters.example.json).
 
-## Notebooks
+## DUK v3 research notebooks
 
-- `notebooks/kinematics/duk-leg-kinematics.ipynb`: equations, one-pose geometry, workspace, trajectories and Jacobian.
-- `notebooks/motion/duk-leg-motion.ipynb`: interactive play/pause/scrub animation, rigid-carrier invariants, motion signals and workspace analysis.
+| Study | Notebook | Candidate evaluated |
+| --- | --- | --- |
+| NB1 | [Kinematics](notebooks/kinematics/duk-leg-kinematics.ipynb) and [motion](notebooks/motion/duk-leg-motion.ipynb) | Canonical four-bar, BCO invariants, derivative regression and world placement |
+| NB2 | [Hip loads](notebooks/dynamics/duk-hip-load.ipynb) | Mass composition, static effort and a torque–speed envelope |
+| NB3 | [Planar contact](notebooks/dynamics/duk-planar-contact.ipynb) | Compiled 7 DOF dynamics, rigid rolling, compliant slip and sensor replay |
+| NB4 | [Fixed-hip balance](notebooks/control/duk-fixed-hip-balance.ipynb) | Wheel-moment pendulum, unanchored/anchored LQR, saturation and traction |
+| NB5 | [Height balance](notebooks/control/duk-height-balance.ipynb) | Fixed/scheduled/TV-LQR and MPC with prescribed symmetric hip motion |
+| NB6 | [Whole-body allocation](notebooks/control/duk-whole-body.ipynb) | 3D compliant simulation, weighted QP/HQP, feature transitions and supervision |
 
-The motion workbench remains kinematic. Motor limits, contact dynamics, body mass/inertia and controller dynamics are not invented.
+Install the optional research environment and run the sequence from the repo root.
 
+```bash
+python -m pip install -e "./robot/software/core[test,research]"
+OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py
+```
+
+Use `--output-dir data/results/duk-v3` to save executed notebook copies with plots
+and printed outcomes. The [experiment inputs](../../../research/experiments/duk-v3/README.md)
+separate canonical geometry from synthetic masses, contact and actuator settings.
+The numerical and control modules are Python research code. The spatial study
+uses thin disks on horizontal supports and a shared lateral rolling row in the allocator.
+Independent soft contact forces still act at each wheel in the simulated plant.
+The sensor, driver and stop policies are explicit simulation inputs.
 
 ## Code organization rules
 
-The kinematic stack is intentionally separated by responsibility:
+The research stack is intentionally separated by responsibility:
 
 1. **Modeling** owns equations, topology and invariants.
 2. **Visualization** consumes solved poses; it must not duplicate geometry equations.

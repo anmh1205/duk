@@ -241,3 +241,15 @@ the [grounded preview](../development/kinematic-bench.md) for the geometric
 constraints and frame labels. This 3D visualization placement is **not** a new
 roll dynamics model: the candidate 7-DOF dynamics above remains sagittal. Contact
 forces, impacts, tire compliance and no-slip rolling have not been established.
+
+## DUK v3 research studies
+
+The [core notebook sequence](../../robot/software/core/README.md#duk-v3-research-notebooks)
+runs the canonical equations with a versioned synthetic fixture. The 7 DOF
+projection uses the axle position and forward-positive balance angle for
+fixed-hip LQR. The spatial candidate uses world linear/angular velocity,
+the two hip rates and relative wheel rates. With a rotation matrix for
+orientation, the spatial state advances rotation by an exponential map.
+The spatial mass, bias, input and contact terms are tested against the
+sagittal model under the corresponding coordinate lift. The fixture separates
+synthetic data from the physical parameter template.
