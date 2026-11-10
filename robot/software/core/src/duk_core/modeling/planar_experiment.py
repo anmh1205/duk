@@ -25,6 +25,7 @@ class PlanarTrace:
     com_vertical_acceleration: np.ndarray
     relative_spin: np.ndarray
     carrier_rate: np.ndarray
+    termination: str
 
 
 def simulate_planar(
@@ -39,17 +40,28 @@ def simulate_planar(
     max_step,
     rtol,
     atol,
+    force_atol=1e-9,
 ):
-    """Run an explicit contact model. Rigid invalidity terminates the selected run."""
+    """Run an explicit contact model and retain the terminal sample at a guard."""
     times, friction = np.asarray(times, dtype=float), np.asarray(friction, dtype=float)
+    initial = np.asarray(initial, dtype=float)
+    if initial.shape != (14,) or not np.isfinite(initial).all():
+        raise ValueError("Expected seven finite coordinates and seven velocities")
     if (
         friction.shape != (2,)
         or not np.isfinite(friction).all()
         or np.any(friction < 0)
     ):
         raise ValueError("Friction must be two finite nonnegative coefficients")
-    if times.ndim != 1 or times.size < 2 or np.any(np.diff(times) <= 0):
+    if (
+        times.ndim != 1
+        or times.size < 2
+        or not np.isfinite(times).all()
+        or np.any(np.diff(times) <= 0)
+    ):
         raise ValueError("Simulation times must increase")
+    if not np.isfinite(force_atol) or force_atol <= 0:
+        raise ValueError("Force tolerance must be finite and positive")
     if mode not in {"rolling", "compliant", "flight"}:
         raise ValueError("Unknown sagittal contact model")
     if mode == "compliant" and contact_law is None:
@@ -63,12 +75,16 @@ def simulate_planar(
             result = compliant_planar(dynamics, v, u, friction, contact_law)
         else:
             result = rigid_rolling(
-                dynamics, u, friction, active=(mode == "rolling",) * 2
+                dynamics,
+                u,
+                friction,
+                active=(mode == "rolling",) * 2,
+                tolerance=force_atol,
             )
         return dynamics, result, u
 
     if mode == "rolling":
-        d0, _, _ = calculate(times[0], np.asarray(initial))
+        d0, _, _ = calculate(times[0], initial)
         if np.max(abs(d0.gaps)) > atol or np.max(abs(d0.contact @ initial[7:])) > atol:
             raise ValueError(
                 "Rolling simulation requires consistent initial gaps and velocities"
@@ -83,11 +99,13 @@ def simulate_planar(
         if mode == "flight":
             return np.min(dynamics.gaps)
         normal, tangent = np.split(result.forces, 2)
-        return np.min(np.r_[normal, friction * normal - abs(tangent)])
+        # A force on the admissible boundary, including zero tangential force
+        # at zero friction, can persist without a mode transition.
+        return np.min(np.r_[normal, friction * normal - abs(tangent)]) + force_atol
 
     guard.terminal = True
     guard.direction = -1
-    if mode != "compliant" and guard(times[0], np.asarray(initial)) < 0:
+    if mode != "compliant" and guard(times[0], initial) < 0:
         raise ValueError("The selected rigid mode is invalid at the initial state")
     solution = solve_ivp(
         rhs,
@@ -102,6 +120,15 @@ def simulate_planar(
     )
     if not solution.success:
         raise RuntimeError(solution.message)
+
+    sampled_times, sampled_states = solution.t, solution.y.T
+    termination = "completed"
+    if solution.status == 1:
+        termination = "touchdown" if mode == "flight" else "rolling_limit"
+        event_time = solution.t_events[0][0]
+        if event_time > sampled_times[-1]:
+            sampled_times = np.r_[sampled_times, event_time]
+            sampled_states = np.vstack((sampled_states, solution.y_events[0][0]))
 
     def sample(time, state):
         dynamics, result, u = calculate(time, state)
@@ -137,7 +164,7 @@ def simulate_planar(
             v[5:] - v[2] - spin,
         )
 
-    values = [sample(time, state) for time, state in zip(solution.t, solution.y.T)]
+    values = [sample(time, state) for time, state in zip(sampled_times, sampled_states)]
     return PlanarTrace(
-        solution.t, solution.y.T, *[np.asarray(column) for column in zip(*values)]
+        sampled_times, sampled_states, *map(np.asarray, zip(*values)), termination
     )

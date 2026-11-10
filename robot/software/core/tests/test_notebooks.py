@@ -48,3 +48,24 @@ def test_motion_notebook_uses_real_animation_player() -> None:
     assert "create_leg_animation" in source
     assert "to_jshtml()" in source
     assert "motion snapshots" not in source.lower()
+
+
+def test_notebook_runner_rejects_an_output_symlink_into_the_source(tmp_path):
+    import subprocess
+    import sys
+
+    pytest.importorskip("nbclient")
+    output = tmp_path / "executed"
+    output.mkdir()
+    (output / "kinematics").symlink_to(
+        NOTEBOOK_ROOT / "kinematics", target_is_directory=True
+    )
+    runner = NOTEBOOK_ROOT.parent / "examples" / "run_duk_notebooks.py"
+    result = subprocess.run(
+        [sys.executable, str(runner), "--output-dir", str(output)],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 2
+    assert "outside the source notebooks" in result.stderr

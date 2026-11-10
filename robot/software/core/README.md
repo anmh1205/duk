@@ -98,7 +98,8 @@ OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py
 ```
 
 Use `--output-dir data/results/duk-v3` to save executed notebook copies with plots
-and printed outcomes. The [experiment inputs](../../../research/experiments/duk-v3/README.md)
+and printed outcomes. The runner requires executed copies to stay outside the
+source notebook tree. The [experiment inputs](../../../research/experiments/duk-v3/README.md)
 separate canonical geometry from synthetic masses, contact and actuator settings.
 The numerical and control modules are Python research code. The spatial study
 uses thin disks on horizontal supports and a shared lateral rolling row in the allocator.

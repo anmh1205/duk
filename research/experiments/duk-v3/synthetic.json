@@ -287,7 +287,9 @@
       "brief_late": {
         "fault": "deadline",
         "fault_start_s": 0.3,
-        "fault_end_s": 0.315
+        "fault_end_s": 0.315,
+        "drive_speed_m_s": 0.04,
+        "drive_end_s": 0.345
       },
       "infeasible": {
         "fault": "infeasible",

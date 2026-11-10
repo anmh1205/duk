@@ -61,6 +61,8 @@ class HeightTrace:
     height: np.ndarray
     compute_time: np.ndarray
     status: tuple[str, ...]
+    terminal_time: float
+    terminal_lean: float
 
 
 def _force_constraints(response, hip_bound, friction):
@@ -75,6 +77,8 @@ def _force_constraints(response, hip_bound, friction):
 
 
 def _interval(base, slope, motor_bound):
+    if not np.isfinite(base).all() or not np.isfinite(slope).all():
+        return None
     lower, upper = -motor_bound, motor_bound
     for value, derivative in zip(base, slope):
         if derivative > 1e-10:
@@ -84,6 +88,26 @@ def _interval(base, slope, motor_bound):
         elif value > 1e-9:
             return None
     return (lower, upper) if lower <= upper else None
+
+
+def _rolling_step(plant, trajectory, motor, friction, state, effort, start, end, first):
+    """Reject a midpoint step if holding its effort violates a sampled constraint."""
+    dt = end - start
+    midpoint = state + first.derivative * dt / 2
+    motion = trajectory.evaluate(start + dt / 2)
+    middle = plant.evaluate(midpoint, effort, motion)
+    if not np.all(
+        _force_constraints(middle, motor.joint_limit(motion[1]), friction) <= 1e-8
+    ):
+        return None, "midpoint_infeasible"
+    candidate = state + dt * middle.derivative
+    motion = trajectory.evaluate(end)
+    final = plant.evaluate(candidate, effort, motion)
+    if not np.all(
+        _force_constraints(final, motor.joint_limit(motion[1]), friction) <= 1e-8
+    ):
+        return None, "endpoint_infeasible"
+    return candidate, None
 
 
 def _mpc(samples, deviation, q, r, terminal, motor_bound):
@@ -109,18 +133,22 @@ def _mpc(samples, deviation, q, r, terminal, motor_bound):
     hessian += influence.T @ terminal @ influence
     gradient += influence.T @ terminal @ shifted
 
+    rows, limits = np.vstack(rows), np.concatenate(limits)
     result = minimize(
         lambda u: 0.5 * u @ hessian @ u + gradient @ u,
         np.clip(np.zeros(count), lower, upper),
         jac=lambda u: hessian @ u + gradient,
         method="SLSQP",
         bounds=Bounds(lower, upper),
-        constraints=LinearConstraint(np.vstack(rows), -np.inf, np.concatenate(limits)),
+        constraints=LinearConstraint(rows, -np.inf, limits),
         options={"ftol": 1e-9, "maxiter": 50},
     )
     if (
         not result.success
-        or np.max(np.vstack(rows) @ result.x - np.concatenate(limits)) > 1e-6
+        or not np.isfinite(result.x).all()
+        or np.max(rows @ result.x - limits) > 1e-6
+        or np.any(result.x < np.asarray(lower) - 1e-8)
+        or np.any(result.x > np.asarray(upper) + 1e-8)
     ):
         return None
     return float(result.x[0])
@@ -148,10 +176,13 @@ def compare_height_policies(
     if (
         not np.isfinite([period, duration, friction, motor_bound]).all()
         or min(period, duration, friction, motor_bound) <= 0
+        or not isinstance(horizon, (int, np.integer))
         or horizon < 1
     ):
         raise ValueError("Invalid height study interval, limits or MPC horizon")
-    times = np.arange(round(duration / period)) * period
+    times = np.arange(0.0, duration, period)
+    times = times[times < duration]
+    ends = np.r_[times[1:], duration]
     offset = model.equivalent_upper_body(trajectory.initial).angle_from_vertical_rad
     plant = PrescribedSagittal(model, offset)
 
@@ -170,16 +201,9 @@ def compare_height_policies(
         slope = _force_constraints(response1, hip_bound, friction) - base
         return _interval(base, slope, motor_bound), response0, response1
 
-    def advance(state, effort, time):
-        first = plant.evaluate(state, effort, trajectory.evaluate(time)).derivative
-        middle = plant.evaluate(
-            state + first * period / 2, effort, trajectory.evaluate(time + period / 2)
-        ).derivative
-        return state + period * middle
-
     samples = []
     nominal = np.zeros(4)
-    for time in times:
+    for time, end in zip(times, ends):
         motion = trajectory.evaluate(time)
         q, dq, ddq = motion
         step = 1e-4
@@ -204,7 +228,7 @@ def compare_height_policies(
             nominal,
             effort,
         )
-        a, b = zoh(local_a, local_b, period)
+        a, b = zoh(local_a, local_b, end - time)
         hip_bound = motor.joint_limit(dq)
 
         def constraints(state, u):
@@ -225,7 +249,20 @@ def compare_height_policies(
                 cb[:, 0],
             )
         )
-        nominal = advance(nominal, effort, time)
+        start_response = plant.evaluate(nominal, effort, motion)
+        nominal, rejected = _rolling_step(
+            plant,
+            trajectory,
+            motor,
+            friction,
+            nominal,
+            effort,
+            time,
+            end,
+            start_response,
+        )
+        if rejected is not None:
+            raise ValueError(f"Nominal lift at {time:.3f} s: {rejected}")
 
     fixed = frozen(trajectory.initial).gain[0]
     grid = np.linspace(
@@ -243,7 +280,8 @@ def compare_height_policies(
     for policy in ("fixed", "scheduled", "tv_lqr", "mpc"):
         state = np.array([0.0, 0.0, initial_lean, 0.0])
         rows, statuses = [], []
-        for index, (time, sample) in enumerate(zip(times, samples)):
+        terminal_time = 0.0
+        for index, (time, end, sample) in enumerate(zip(times, ends, samples)):
             deviation = state - sample.nominal
             start = perf_counter()
             status = "within_limits"
@@ -279,23 +317,39 @@ def compare_height_policies(
                 status = "infeasible"
             elif status == "within_limits" and effort != request:
                 status = "limited"
-            response = plant.evaluate(
-                state, 0.0 if interval is None else effort, sample.motion
-            )
+            next_state, rejected = None, None
+            if interval is not None:
+                response = plant.evaluate(state, effort, sample.motion)
+                next_state, rejected = _rolling_step(
+                    plant,
+                    trajectory,
+                    motor,
+                    friction,
+                    state,
+                    effort,
+                    time,
+                    end,
+                    response,
+                )
+                if rejected is not None:
+                    status, effort = rejected, np.nan
             lean = state[2] - posture(sample.motion[0])
             lift = lift_at(plant, state, sample.motion)
-            usage = (
-                2
-                * np.max(abs(response.tangent_force))
-                / max(1e-12, friction * response.normal_force)
-            )
+            usage, hip_effort = np.nan, np.full(2, np.nan)
+            if next_state is not None:
+                usage = (
+                    2
+                    * np.max(abs(response.tangent_force))
+                    / max(1e-12, friction * response.normal_force)
+                )
+                hip_effort = response.hip_effort
             rows.append(
                 (
                     time,
                     state,
                     request,
                     effort,
-                    response.hip_effort,
+                    hip_effort,
                     usage,
                     lean,
                     lift,
@@ -303,10 +357,13 @@ def compare_height_policies(
                 )
             )
             statuses.append(status)
-            if interval is None:
+            if next_state is None:
                 break
-            state = advance(state, effort, time)
-        traces[policy] = HeightTrace(*map(np.asarray, zip(*rows)), tuple(statuses))
+            state, terminal_time = next_state, end
+        terminal_lean = state[2] - posture(trajectory.evaluate(terminal_time)[0])
+        traces[policy] = HeightTrace(
+            *map(np.asarray, zip(*rows)), tuple(statuses), terminal_time, terminal_lean
+        )
     return traces
 
 

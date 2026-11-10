@@ -96,3 +96,67 @@ def test_toggle_exit_retracts_actual_contribution_and_stop_latches():
     ]
     assert supervisor.step("solved", **(flags | {"sensor_valid": False})) == "stop"
     assert supervisor.step("solved", **flags) == "stop"
+
+
+def test_projection_cannot_bypass_motor_limits_with_a_wide_interval():
+    assert project_torque(9, 3, (-10, 10)).applied == 3
+    assert project_torque(-9, 3, (-10, 10)).reason == "motor"
+    assert project_torque(9, 3, (4, 10)).applied is None
+    with pytest.raises(ValueError, match="NaN"):
+        project_torque(9, 3, (np.nan, 10))
+
+
+@pytest.mark.parametrize("violation", ["midpoint", "endpoint"])
+def test_held_torque_step_rejects_intermediate_contact_failure(violation):
+    from types import SimpleNamespace
+
+    from duk_core.control.height_balance import _rolling_step
+
+    def response(normal):
+        return SimpleNamespace(
+            derivative=np.ones(4),
+            hip_effort=np.zeros(2),
+            normal_force=normal,
+            tangent_force=np.zeros(2),
+        )
+
+    limit = 0.05 if violation == "midpoint" else 0.10
+    trajectory = SimpleNamespace(evaluate=lambda time: (time, 0, 0))
+    plant = SimpleNamespace(
+        evaluate=lambda state, effort, motion: response(-1 if motion[0] >= limit else 1)
+    )
+    motor = SimpleNamespace(joint_limit=lambda speed: 1)
+    state, status = _rolling_step(
+        plant, trajectory, motor, 0.5, np.zeros(4), 0.1, 0, 0.1, response(1)
+    )
+    assert state is None
+    assert status == violation + "_infeasible"
+
+
+def test_infeasible_balance_interval_discards_queued_torque(monkeypatch):
+    from duk_core.control import sagittal_balance
+
+    model = WheeledPendulum(0.6, 0.00169, 3.5, 0.06, 0.18, 0.075, 9.81)
+    intervals = iter([(-3.0, 3.0), (-3.0, 3.0), None])
+    monkeypatch.setattr(
+        sagittal_balance, "traction_interval", lambda *_: next(intervals)
+    )
+    trace = sagittal_balance.simulate_balance(
+        model,
+        [0.0, -1.0, 0.0],
+        0.02,
+        period=0.005,
+        duration=0.05,
+        friction=0.8,
+        motor_bound=3.0,
+        slip_scale=0.01,
+        fall_angle=0.5,
+        feedback="truth",
+        traction_budget=0.5,
+        delay_samples=1,
+    )
+    assert trace.outcome == "traction_infeasible"
+    assert trace.time[-1] == pytest.approx(0.01)
+    assert trace.applied[-2] > 0
+    assert trace.applied[-1] == 0
+    assert trace.limit_reason[-1] == "infeasible"

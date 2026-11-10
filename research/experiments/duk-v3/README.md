@@ -13,3 +13,15 @@ records unidentified parameters separately.
 The notebooks log input hashes, commit, trial settings and outcomes. Keep
 generated outputs under `data/results/`. Motion, controller and fault results
 apply to the modeled conditions and numerical tolerances of each study.
+
+NB3 records the event time and state when rigid rolling reaches its force limit
+or flight reaches the support. The solver supplies that sample separately from
+the requested time grid. [SciPy event outputs](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.solve_ivp.html)
+
+NB4 reports an empty torque interval as `traction_infeasible` and clears the
+simulated delay queue. NB5 checks held torque at the start, midpoint and end
+of each step. A rejected step leaves the accepted trajectory at its last
+feasible endpoint. NB6 logs the applied command source. A fallback regulates
+speed toward zero and pauses optional tasks. It uses normal force shares from
+the simulator to estimate the traction available to equal wheel moments.
+These checks describe the numerical experiment and its stop policy.

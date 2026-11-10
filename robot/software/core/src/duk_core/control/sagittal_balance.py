@@ -46,9 +46,18 @@ def traction_interval(
 
 
 def project_torque(requested, motor_bound, interval):
+    """Apply the motor bound even when a caller supplies a wider traction interval."""
+    if not np.isfinite([requested, motor_bound]).all() or motor_bound < 0:
+        raise ValueError("Torque request and motor bound must be finite")
     if interval is None:
         return TorqueDecision(float(requested), None, "infeasible")
-    applied = float(np.clip(requested, *interval))
+    lower, upper = interval
+    if np.isnan([lower, upper]).any():
+        raise ValueError("Torque interval must not contain NaN")
+    lower, upper = max(lower, -motor_bound), min(upper, motor_bound)
+    if lower > upper:
+        return TorqueDecision(float(requested), None, "infeasible")
+    applied = float(np.clip(requested, lower, upper))
     if applied == requested:
         reason = "within_limits"
     elif applied == np.clip(requested, -motor_bound, motor_bound):
@@ -111,11 +120,22 @@ def simulate_balance(
     if feedback not in {"truth", "odometry", "gated"}:
         raise ValueError("Unknown feedback source")
     if (
-        not np.isfinite(
-            [period, duration, friction, motor_bound, slip_scale, fall_angle]
+        not isinstance(delay_samples, (int, np.integer))
+        or not np.isfinite(
+            [
+                period,
+                duration,
+                friction,
+                motor_bound,
+                slip_scale,
+                fall_angle,
+                initial_lean,
+                accel_noise,
+                pitch_noise,
+            ]
         ).all()
         or min(period, duration, slip_scale, fall_angle) <= 0
-        or min(friction, motor_bound, delay_samples) < 0
+        or min(friction, motor_bound, delay_samples, accel_noise, pitch_noise) < 0
     ):
         raise ValueError("Invalid balance scenario")
     rng = np.random.default_rng(noise_seed)
@@ -161,10 +181,14 @@ def simulate_balance(
                 model, lean_hat, rate, motor_bound, traction_budget
             )
         decision = project_torque(request, motor_bound, interval)
-        # A zero-effort response is an explicit simulator policy for an infeasible interval.
+        # The stop policy clears queued commands when no torque is admissible.
         limited = 0.0 if decision.applied is None else decision.applied
         commands.append(limited)
-        applied = commands[tick - delay_samples] if tick >= delay_samples else 0.0
+        applied = (
+            commands[tick - delay_samples]
+            if decision.applied is not None and tick >= delay_samples
+            else 0.0
+        )
         previous_applied = applied
         reasons.append(decision.reason)
         sample = contact(state, applied)
@@ -196,6 +220,9 @@ def simulate_balance(
         fall.direction = lift.direction = -1
         if sample.normal <= 0 or abs(lean) >= fall_angle:
             outcome = "lost_contact" if sample.normal <= 0 else "pitch_limit"
+            break
+        if decision.applied is None:
+            outcome = "traction_infeasible"
             break
         step = solve_ivp(
             derivative,

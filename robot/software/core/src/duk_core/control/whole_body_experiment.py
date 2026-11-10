@@ -48,7 +48,9 @@ class WholeBodyTrace:
     feature_status: tuple
     contact_modes: tuple
     capacity_reason: tuple
+    command_source: tuple
     stop_reason: str | None
+    terminal_time: float
 
 
 def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, priority):
@@ -64,6 +66,19 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
     q0 = np.deg2rad(p["initial_q_deg"])
     period = p["period_s"]
     substeps = p["substeps"]
+    duration = c["duration_s"]
+    if (
+        not np.isfinite([period, duration]).all()
+        or min(period, duration) <= 0
+        or not isinstance(substeps, (int, np.integer))
+        or substeps < 1
+    ):
+        raise ValueError(
+            "Expected positive simulation times and an integer substep count"
+        )
+    times = np.arange(0.0, duration, period)
+    times = times[times < duration]
+    ends = np.r_[times[1:], duration]
     hip_limits = np.deg2rad(p["hip_limits_deg"])
     law = CompliantContact(**p["contact_law"])
     nominal_body = model.planar.equivalent_upper_body(q0)
@@ -134,14 +149,16 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
     friction_belief = np.full(2, c["friction"] * p["friction_reserve"])
     previous_force = np.array([[0.0, 0.0, normal_at_rest]] * 2)
     warm_start, anchor, heading_anchor = None, None, None
-    last_speed, forward_estimate, flying_ticks = 0.0, 0.0, 0
+    last_speed, forward_estimate = 0.0, 0.0
+    flight_started = None
     rows, solver_states, supervisors, feature_states, modes_log = [], [], [], [], []
-    capacity_reasons = []
+    capacity_reasons, command_sources = [], []
     previous_usage = 0.0
     stop_reason = None
+    terminal_time = 0.0
 
-    for tick in range(round(c["duration_s"] / period)):
-        t = tick * period
+    for tick, (t, end) in enumerate(zip(times, ends)):
+        terminal_time = t
         if tick == round(c["impulse_at_s"] / period):
             velocity = state.velocity.copy()
             velocity[:3] += c["velocity_impulse_m_s"]
@@ -179,7 +196,9 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         sliding = (
             np.linalg.norm(c_speed[:, :2], axis=1) > p["spatial_slip_threshold_m_s"]
         )
-        sliding |= longitudinal_slip & (abs(c_speed[:, 0]) > p["slip_threshold_m_s"])
+        sliding |= longitudinal_slip & (
+            abs(c_speed @ k.forward) > p["slip_threshold_m_s"]
+        )
         modes = tuple(
             "flight" if not on_ground else "sliding" if slip else "rolling"
             for on_ground, slip in zip(supported, sliding)
@@ -193,11 +212,18 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             friction_belief[valid_force], p["friction_reserve"] * ratios
         )
 
-        flying_ticks = flying_ticks + 1 if not supported.any() else 0
+        if supported.any():
+            flight_started = None
+        elif flight_started is None:
+            flight_started = t
+        fallen = max(abs(lean), abs(roll)) > np.deg2rad(p["fall_deg"]) or (
+            flight_started is not None and t - flight_started > p["max_flight_s"]
+        )
         sensor_valid = not (fault and c["fault"] == "sensor")
         secondary_available = (
             all(mode == "rolling" for mode in modes)
             and sensor_valid
+            and not fallen
             and supervisor.mode == "normal"
         )
         bounce_on = c["feature_start_s"] <= t < c["bounce_off_s"]
@@ -217,7 +243,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             + p["governor_gain"] * max(0.0, previous_usage - p["governor_utilization"])
         )
         capacity = min(c["reference_capacity"], headroom)
-        if not sensor_valid or supervisor.mode != "normal":
+        if not sensor_valid or fallen or supervisor.mode != "normal":
             capacity_reason = "supervisor"
         elif not all(mode == "rolling" for mode in modes):
             capacity_reason = "contact_or_slip"
@@ -234,14 +260,6 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             )
             for transition, enabled in zip(features, intents)
         ]
-        if not secondary_available:
-            # Exit is a user transition. Safety gates drop optional contributions.
-            for transition in features:
-                transition.amount = 0.0
-                if transition.status == "Exit":
-                    transition.status = "Idle"
-            amounts = [0.0] * len(features)
-
         phase = 2 * np.pi * c["bounce_hz"] * max(0.0, t - c["feature_start_s"])
         omega = 2 * np.pi * c["bounce_hz"]
         wave = c["bounce_amplitude_m"] * np.sin(phase)
@@ -329,57 +347,46 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             np.full(2, p["wheel_limit_N_m"]),
         ]
         start = perf_counter()
-        if fault and c["fault"] == "deadline":
+        if not sensor_valid or fallen:
+            status = "skipped_sensor" if not sensor_valid else "skipped_safety"
+            result = Allocation(status, None, np.nan, 0.0)
+        elif fault and c["fault"] == "deadline":
             # Inject a late return so that this case is independent of CPU speed.
             result = Allocation("deadline", None, np.nan, 0.0)
         else:
-            if fault and c["fault"] == "infeasible":
-                # Try an actual infeasible problem: all joints disabled and
-                # a contradictory forced contact acceleration on the same model.
-                disabled = np.zeros(4)
-                result = allocate(
-                    terms,
-                    state,
-                    tasks,
-                    modes,
-                    friction=np.zeros(2),
-                    effort_bounds=disabled,
-                    hip_limits=(hip_limits[1] + 0.1, hip_limits[1] + 0.2),
-                    hip_speed_limit=hip_motor.no_load_speed,
-                    lookahead=p["lookahead_s"],
-                    velocity_stabilization=p["contact_stabilization"],
-                    deadline_s=p["deadline_s"],
-                    method=method,
-                )
-            else:
-                result = allocate(
-                    terms,
-                    state,
-                    tasks,
-                    modes,
-                    friction=friction_belief,
-                    effort_bounds=effort_bounds,
-                    hip_limits=hip_limits,
-                    hip_speed_limit=hip_motor.no_load_speed,
-                    lookahead=p["lookahead_s"],
-                    velocity_stabilization=p["contact_stabilization"],
-                    deadline_s=p["deadline_s"],
-                    method=method,
-                    initial=warm_start,
-                )
+            inject_infeasible = fault and c["fault"] == "infeasible"
+            # The injected stance lies outside the reachable travel over the lookahead.
+            result = allocate(
+                terms,
+                state,
+                tasks,
+                modes,
+                friction=np.zeros(2) if inject_infeasible else friction_belief,
+                effort_bounds=np.zeros(4) if inject_infeasible else effort_bounds,
+                hip_limits=(hip_limits[1] + 0.1, hip_limits[1] + 0.2)
+                if inject_infeasible
+                else hip_limits,
+                hip_speed_limit=hip_motor.no_load_speed,
+                lookahead=p["lookahead_s"],
+                velocity_stabilization=p["contact_stabilization"],
+                deadline_s=p["deadline_s"],
+                method=method,
+                initial=None if inject_infeasible else warm_start,
+            )
         solve_seconds = perf_counter() - start
         solver_status = result.status
+        hips, hip_rates = state.joints[:2], state.velocity[6:8]
+        predicted_hips = hips + p["lookahead_s"] * hip_rates
         fallback_valid = (
             all(mode == "rolling" for mode in modes)
             and abs(roll) < np.deg2rad(p["fallback_roll_deg"])
             and np.max(abs(state.joints[:2] - q0))
             < np.deg2rad(p["fallback_hip_error_deg"])
-            and np.all(state.joints[:2] > hip_limits[0])
-            and np.all(state.joints[:2] < hip_limits[1])
-        )
-        fallen = (
-            max(abs(lean), abs(roll)) > np.deg2rad(p["fall_deg"])
-            or flying_ticks * period > p["max_flight_s"]
+            and np.all(hips > hip_limits[0])
+            and np.all(hips < hip_limits[1])
+            and np.all(predicted_hips > hip_limits[0])
+            and np.all(predicted_hips < hip_limits[1])
+            and np.all(abs(hip_rates) < hip_motor.no_load_speed)
         )
         mode = supervisor.step(
             solver_status,
@@ -398,30 +405,47 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             warm_start = None
         if mode == "stop":
             effort = np.zeros(4)
+            command_source = "stop"
         elif result.solution is not None:
             effort = result.effort
+            command_source = "allocator"
         elif fallback_valid:
             bound = 2 * min(effort_bounds[2:])
-            interval = traction_interval(
-                pendulum, lean, rate[0], bound, min(friction_belief)
+            normal_share = previous_force[:, 2] / previous_force[:, 2].sum()
+            # Equal wheel moments must fit the weaker measured support as well.
+            budget = 2 * min(normal_share * friction_belief)
+            interval = traction_interval(pendulum, lean, rate[0], bound, budget)
+            torque = project_torque(
+                balance_command(gain, balance_state), bound, interval
             )
-            torque = project_torque(direct, bound, interval)
             if torque.applied is None:
                 effort = np.zeros(4)
                 mode = supervisor.mode = "stop"
+                command_source = "stop"
             else:
                 effort = symmetric_forward_wheel_input(torque.applied)
-                effort[:2] = np.clip(
+                requested = symmetric_forward_wheel_input(torque.requested)
+                requested[:2] = (
                     hip_feedforward
-                    + p["fallback_hip_kp"] * (q0 - state.joints[:2])
-                    - p["fallback_hip_kd"] * state.velocity[6:8],
-                    -effort_bounds[:2],
-                    effort_bounds[:2],
+                    + p["fallback_hip_kp"] * (q0 - hips)
+                    - (p["fallback_hip_kd"] * hip_rates)
                 )
-                requested = symmetric_forward_wheel_input(direct)
+                effort[:2] = np.clip(
+                    requested[:2], -effort_bounds[:2], effort_bounds[:2]
+                )
+                command_source = "balance_fallback"
         else:
             effort = np.zeros(4)
             mode = supervisor.mode = "stop"
+            command_source = "stop"
+
+        if command_source != "allocator":
+            h_ref, yaw_rate_ref, speed_ref = np.nan, 0.0, 0.0
+            capacity_reason = "supervisor"
+            amounts = [
+                feature.step(enabled, False, 0.0, period, p["feature_ramp_s"])
+                for feature, enabled in zip(features, intents)
+            ]
 
         requested_h = home + wave if bounce_on else home
         previous_usage = np.max(
@@ -457,6 +481,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         feature_states.append(tuple(feature.status for feature in features))
         modes_log.append(modes)
         capacity_reasons.append(capacity_reason)
+        command_sources.append(command_source)
         if mode == "stop":
             stop_reason = (
                 "sensor"
@@ -466,10 +491,12 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
                 else "no_valid_command"
             )
             break
-        for _ in range(substeps):
+        step = (end - t) / substeps
+        for index in range(substeps):
             state, previous_force = model.compliant_step(
-                state, effort, friction, law, period / substeps
+                state, effort, friction, law, step
             )
+            terminal_time = t + (index + 1) * step
             if np.any(state.joints[:2] < hip_limits[0]) or np.any(
                 state.joints[:2] > hip_limits[1]
             ):
@@ -477,6 +504,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
                 break
         if stop_reason is not None:
             break
+        terminal_time = end
     return WholeBodyTrace(
         *map(np.asarray, zip(*rows)),
         tuple(solver_states),
@@ -484,5 +512,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         tuple(feature_states),
         tuple(modes_log),
         tuple(capacity_reasons),
+        tuple(command_sources),
         stop_reason,
+        terminal_time,
     )

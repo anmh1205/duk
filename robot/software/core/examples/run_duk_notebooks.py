@@ -26,6 +26,14 @@ def main():
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1] / "notebooks"
+    output = args.output_dir
+    if output is not None:
+        # Resolve each destination as well as its parent to catch symlinks
+        # pointing back into the source tree.
+        if any((output / path).resolve().is_relative_to(root) for path in NOTEBOOKS):
+            parser.error(
+                "--output-dir must keep all executed copies outside the source notebooks"
+            )
     kernel_env = os.environ | {
         "MPLBACKEND": "module://matplotlib_inline.backend_inline"
     }

@@ -132,3 +132,53 @@ def test_hierarchy_preserves_first_task_and_rejects_invalid_limits(spatial):
         **(limits | {"hip_limits": (2.8, 2.9)}),
     )
     assert impossible.status == "infeasible" and impossible.effort is None
+
+
+@pytest.mark.parametrize("fault", ["sensor", "deadline"])
+def test_fault_discards_drive_request_before_a_partial_final_step(
+    spatial, monkeypatch, fault
+):
+    from duk_core.control import whole_body_experiment
+    from duk_core.modeling.hip_load import LinearTorqueSpeed
+
+    def unexpected_allocation(*args, **kwargs):
+        pytest.fail("A rejected sample must not reach the allocator")
+
+    monkeypatch.setattr(whole_body_experiment, "allocate", unexpected_allocation)
+    fixture_path = GEOMETRY.parents[3] / "research/experiments/duk-v3/synthetic.json"
+    fixture = json.loads(fixture_path.read_text())
+    settings = fixture["whole_body"] | {"substeps": 2}
+    scenario = settings["scenario"] | {
+        "duration_s": 0.007,
+        "feature_start_s": 0.0,
+        "initial_lean_deg": 0.0,
+        "fault": fault,
+        "fault_start_s": 0.0,
+        "fault_end_s": 0.02,
+        "drive_speed_m_s": 0.1,
+        "drive_end_s": 0.02,
+    }
+    limits = fixture["hip_envelope"]
+    motor = LinearTorqueSpeed(
+        limits["stall_torque_N_m"], limits["no_load_speed_rad_s"], limits["efficiency"]
+    )
+    trace = whole_body_experiment.run_whole_body(
+        spatial,
+        motor,
+        fixture["v2_balance"],
+        settings,
+        scenario,
+        method="weighted",
+        priority="balance_first",
+    )
+    assert trace.requested_reference[0, 2] == 0.1
+    np.testing.assert_allclose(trace.effective_reference[0, 1:], 0.0)
+    np.testing.assert_allclose(trace.feature_amount[0], 0.0)
+    np.testing.assert_allclose(trace.applied_effort[0, 2:], 0.0, atol=1e-10)
+    if fault == "sensor":
+        assert trace.command_source == ("stop",)
+        assert trace.solver_status == ("skipped_sensor",)
+        assert trace.terminal_time == 0.0
+    else:
+        assert trace.command_source == ("balance_fallback",)
+        assert trace.terminal_time == pytest.approx(0.007)

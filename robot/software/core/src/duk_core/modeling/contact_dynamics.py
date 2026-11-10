@@ -77,6 +77,8 @@ def rigid_rolling(
 ) -> PlanarContactResult:
     """Solve a selected rolling mode and report unilateral/friction feasibility."""
     active = np.asarray(active, dtype=bool)
+    if active.shape != (2,):
+        raise ValueError("Specify active contact for each wheel")
     rows = np.r_[active, active]
     acc, multipliers = constrained_acceleration(
         dynamics.mass,

@@ -19,9 +19,9 @@ class FeatureTransition:
             or min(dt, ramp_time) <= 0
         ):
             raise ValueError("Invalid feature capacity or transition interval")
-        if enabled and not available:
+        if not available:
             self.amount = 0.0
-            self.status = "Paused"
+            self.status = "Paused" if enabled else "Idle"
             return self.amount
         target = capacity if enabled else 0.0
         self.amount += float(
