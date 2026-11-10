@@ -51,14 +51,42 @@ def test_spatial_task_rates_match_finite_differences(spatial):
     state, _ = spatial.sagittal_state(q, [0.12, -0.03, 0.2, 0.5, -0.4, -0.7, 0.6])
     v = state.velocity.copy()
     v[3:6] += [0.07, 0.01, -0.14]
+    state = state.advance(v, 0.0)
     step = 1e-5
-    before = spatial.kinematics(state.advance(v, -step)).tasks
-    after = spatial.kinematics(state.advance(v, step)).tasks
+    before = spatial.kinematics(state.advance(v, -step))
+    after = spatial.kinematics(state.advance(v, step))
+    terms = spatial.evaluate(state)
     np.testing.assert_allclose(
         spatial.kinematics(state).task_jacobian @ v,
-        (after - before) / (2 * step),
+        (after.tasks - before.tasks) / (2 * step),
         atol=1e-8,
     )
+    np.testing.assert_allclose(
+        terms.task_bias,
+        (after.task_jacobian - before.task_jacobian) @ v / (2 * step),
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        terms.contact_bias,
+        (after.contact - before.contact) @ v / (2 * step),
+        atol=1e-8,
+    )
+
+
+def test_valid_pose_near_boundary_needs_no_outside_probe(spatial):
+    from duk_core.modeling.spatial_biped import SpatialState
+
+    lower, _ = spatial.geometry.geometric_linkage_angle_limits_rad()
+    state = SpatialState(
+        np.array([0.0, 0.0, 0.4]),
+        np.eye(3),
+        np.array([lower + 1e-6, 1.7, 0.0, 0.0]),
+        np.r_[np.zeros(6), -0.5, 0.0, 0.0, 0.0],
+    )
+    terms = spatial.evaluate(state)
+    assert np.isfinite(
+        np.r_[terms.bias, terms.contact_bias.ravel(), terms.task_bias]
+    ).all()
 
 
 def test_free_spatial_motion_preserves_energy_to_first_order(spatial):

@@ -25,6 +25,14 @@ class PlanarKinematics:
 
 
 @dataclass(frozen=True)
+class PlanarKinematicBias:
+    """Per-body convective acceleration at zero generalized acceleration, in SI."""
+
+    linear: np.ndarray
+    angular: np.ndarray
+
+
+@dataclass(frozen=True)
 class PlanarDynamics:
     mass: np.ndarray
     bias: np.ndarray
@@ -94,6 +102,26 @@ class NumericPlanarBiped:
             jacobians.reshape(count, 2, 7),
             angular.reshape(count, 7),
         )
+
+    @cached_property
+    def _kinematic_bias(self):
+        terms = self.model.body_acceleration_bias
+        return self._compile(
+            [linear for linear, _ in terms] + [angular for _, angular in terms],
+            velocity=True,
+        )
+
+    def kinematic_bias(self, configuration, velocity) -> PlanarKinematicBias:
+        """Evaluate analytic Jdot v on the physical branch without perturbed poses."""
+        self.model.bind_configuration(configuration)
+        velocity = np.asarray(velocity, dtype=float)
+        if velocity.shape != (7,) or not np.isfinite(velocity).all():
+            raise ValueError("Expected seven finite generalized velocities")
+        values = np.asarray(
+            self._kinematic_bias(*configuration, *velocity), dtype=float
+        )
+        linear, angular = np.split(values, [2 * len(self.names)])
+        return PlanarKinematicBias(linear.reshape(-1, 2), angular)
 
     @cached_property
     def _dynamics(self):

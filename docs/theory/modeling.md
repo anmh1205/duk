@@ -253,3 +253,20 @@ orientation, the spatial state advances rotation by an exponential map.
 The spatial mass, bias, input and contact terms are tested against the
 sagittal model under the corresponding coordinate lift. The fixture separates
 synthetic data from the physical parameter template.
+
+Spatial velocity biases are evaluated analytically. The planar model exposes
+each body's translational/angular `Jdot v`, compiled once by
+`NumericPlanarBiped.kinematic_bias`. For body-relative position `r = R c(q)`
+and world internal velocity `u = R c_q qdot`, rigid-base transport gives
+`a_bias = omega × (omega × r) + 2 omega × u + R a_local`.
+The angular bias includes rotation of the joint axle and the linkage's angular
+curvature. Wheels use carrier curvature plus their relative spin rate.
+
+The lowest point of each tilted disk supplies both its offset `b` and geometric
+rate `bdot`. Contact bias is
+`a_wheel + alpha_wheel × b + omega_wheel × bdot`. Lean, roll and heading biases
+differentiate their angle functions and the normalized horizontal heading.
+`SpatialBiped.evaluate(state)` therefore uses the actual configuration without
+finite-difference probe poses or a `difference_step` argument. This avoids
+rejecting a valid near-boundary pose because a numerical probe leaves the
+assembly domain. The singular geometric boundary itself is still excluded.
