@@ -8,6 +8,7 @@ from time import perf_counter
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from ._sampled import sample_intervals
 from .lqr import bryson_weights, discrete_lqr
 from .sagittal_balance import balance_command, project_torque, traction_interval
 from .task_policy import FeatureTransition, Supervisor, return_to_anchor, wrap_angle
@@ -76,9 +77,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         raise ValueError(
             "Expected positive simulation times and an integer substep count"
         )
-    times = np.arange(0.0, duration, period)
-    times = times[times < duration]
-    ends = np.r_[times[1:], duration]
+    times, ends = sample_intervals(duration, period)
     hip_limits = np.deg2rad(p["hip_limits_deg"])
     law = CompliantContact(**p["contact_law"])
     nominal_body = model.planar.equivalent_upper_body(q0)
@@ -491,7 +490,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
                 else "no_valid_command"
             )
             break
-        step = (end - t) / substeps
+        step = (period if end < duration else end - t) / substeps
         for index in range(substeps):
             state, previous_force = model.compliant_step(
                 state, effort, friction, law, step

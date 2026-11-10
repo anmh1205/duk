@@ -8,6 +8,7 @@ from time import perf_counter
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
+from ._sampled import sample_intervals
 from .lqr import discrete_lqr, finite_horizon_lqr, linearize, zoh
 from ..modeling.rolling_reduction import PrescribedSagittal
 from ..modeling.wheeled_pendulum import WheeledPendulum
@@ -180,9 +181,7 @@ def compare_height_policies(
         or horizon < 1
     ):
         raise ValueError("Invalid height study interval, limits or MPC horizon")
-    times = np.arange(0.0, duration, period)
-    times = times[times < duration]
-    ends = np.r_[times[1:], duration]
+    times, ends = sample_intervals(duration, period)
     offset = model.equivalent_upper_body(trajectory.initial).angle_from_vertical_rad
     plant = PrescribedSagittal(model, offset)
 

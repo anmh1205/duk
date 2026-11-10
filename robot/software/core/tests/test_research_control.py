@@ -160,3 +160,19 @@ def test_infeasible_balance_interval_discards_queued_torque(monkeypatch):
     assert trace.applied[-2] > 0
     assert trace.applied[-1] == 0
     assert trace.limit_reason[-1] == "infeasible"
+
+
+@pytest.mark.parametrize(
+    ("duration", "period", "count"),
+    [(0.9, 0.015, 60), (0.007, 0.015, 1), (0.019, 0.015, 2), (2.3, 0.02, 115)],
+)
+def test_sample_grid_has_no_rounding_tick_and_keeps_partial_tail(
+    duration, period, count
+):
+    from duk_core.control._sampled import sample_intervals
+
+    starts, ends = sample_intervals(duration, period)
+    assert len(starts) == count
+    np.testing.assert_allclose(starts[1:], ends[:-1], atol=0, rtol=0)
+    assert np.all(ends > starts)
+    assert ends[-1] == duration

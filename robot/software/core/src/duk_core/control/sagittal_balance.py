@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from ._sampled import sample_intervals
 from ..estimation.sagittal import SlipGatedVelocity
 from ..modeling.wheeled_pendulum import WheeledPendulum
 
@@ -153,7 +154,8 @@ def simulate_balance(
             s[2], s[3], applied, s[1] - model.radius_m * s[5], friction, slip_scale
         )
 
-    for tick in range(int(np.ceil(duration / period))):
+    _, ends = sample_intervals(duration, period)
+    for tick, end_time in enumerate(ends):
         x, speed, lean, rate, spin, spin_rate = state
         wheel_speed = model.radius_m * spin_rate
         if feedback == "truth":
@@ -226,7 +228,7 @@ def simulate_balance(
             break
         step = solve_ivp(
             derivative,
-            (time, min(duration, (tick + 1) * period)),
+            (time, end_time),
             state,
             method="LSODA",
             rtol=1e-6,
@@ -236,7 +238,7 @@ def simulate_balance(
         if not step.success:
             raise RuntimeError(step.message)
         time, state = step.t[-1], step.y[:, -1]
-        if step.status == 1 or tick + 1 == int(np.ceil(duration / period)):
+        if step.status == 1 or tick + 1 == len(ends):
             outcome = (
                 "pitch_limit"
                 if step.t_events[0].size
