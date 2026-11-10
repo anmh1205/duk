@@ -5,12 +5,14 @@ import math
 import pytest
 
 
+@pytest.mark.ros
 def test_panel_widgets_drive_the_same_bench_and_pause(monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     import rclpy
+    from python_qt_binding import QtCore, QtWidgets
+
     from duk_description.kinematic_node import KinematicNode
     from duk_description.kinematic_panel import run_panel
-    from python_qt_binding import QtCore, QtWidgets
 
     rclpy.init(args=[])
     node = KinematicNode()

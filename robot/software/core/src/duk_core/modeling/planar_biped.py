@@ -8,10 +8,11 @@ symbolic until the caller binds it. SymPy is imported only when building a model
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from .leg_linkage import LegGeometry, leg_jacobian, solve_leg_pose
 

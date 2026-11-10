@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 import pytest
+
 from duk_core.modeling import (
     KinematicSingularityError,
     UnreachableConfigurationError,

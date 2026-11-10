@@ -2,18 +2,44 @@
 
 DUK uses independent core tests and end-to-end development-environment tests. Both are required because a Python package can pass in isolation while the ROS/Docker environment is still broken.
 
-## Python core
+## Python source and numerical studies
 
-`.github/workflows/python-core.yml` installs `duk-core[test,symbolic]` directly on an Ubuntu 24.04 runner and verifies:
+The [Python workflow](../../.github/workflows/python-core.yml) installs
+`duk-core[test,research,dev]` directly on an Ubuntu 24.04 runner and verifies:
 
-- package unit tests;
+- Ruff lint/import rules and formatting for Python and notebook sources;
+- core unit tests, import-layer/cycle checks and dependency-free geometry imports;
+- ROS-independent URDF/SDF geometry adapters and developer-tool configuration tests;
 - the standalone DUK leg-kinematics example;
 - symbolic geometry agreement, Lagrange identities, inverse kinematics and
   second-order derivatives; synthetic test parameters are not robot data;
 - the standalone symbolic model with every physical template value still unknown;
-- Python source compilation.
+- Python source compilation;
+- all seven source notebooks in fresh Jupyter kernels, covering NB1–NB6.
 
 The workflow runs for pull requests and relevant changes pushed to `main`. This keeps the numerical package independently testable without ROS or Docker.
+
+From the repository root, run:
+
+```bash
+python -m pip install -e './robot/software/core[test,research,dev]'
+ruff check .
+ruff format --check .
+OPENBLAS_NUM_THREADS=1 python -m pytest -q -m 'not ros'
+OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py --output-dir data/results/duk-v3
+```
+
+The root pytest configuration supplies the core and adapter source paths. The
+`ros` marker identifies the Qt/ROS panel test; run it in the simulation container
+with `python -m pytest -q -m ros`. The simulation workflow's adapter test command
+runs both geometry and panel tests. A locally deselected ROS test does not count
+as a successful runtime check.
+
+For the architecture refactor, six spatial scenarios were replayed before and
+after changing the module structure. All 168 recorded channels matched exactly,
+including injected faults and stop times; CPU timing was excluded. The usual
+notebook assertions and physical-identity regressions remain the behavioral
+checks for subsequent changes.
 
 ## Development environment
 

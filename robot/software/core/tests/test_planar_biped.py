@@ -1,7 +1,6 @@
 """Symbolic model identities; all numeric mass data here are synthetic fixtures."""
 
 import math
-from pathlib import Path
 
 import pytest
 
@@ -14,14 +13,13 @@ from duk_core.modeling import (  # noqa: E402
     solve_leg_pose,
 )
 
-GEOMETRY = Path(__file__).resolve().parents[3] / "config/physical/duk_leg_geometry.json"
 STATE = [0.12, 0.5, 0.1, math.radians(75), math.radians(80), 0.2, -0.3]
 VELOCITY = [0.11, -0.07, 0.2, 0.3, -0.25, 1, -0.5]
 
 
 @pytest.fixture(scope="module")
-def model():
-    return build_planar_biped_model(load_leg_geometry_json(GEOMETRY))
+def model(geometry_path):
+    return build_planar_biped_model(load_leg_geometry_json(geometry_path))
 
 
 @pytest.fixture(scope="module")
@@ -202,11 +200,11 @@ def test_unknown_parameters_stay_symbolic_and_invalid_values_fail(model):
         model.bind_parameters({"m_body_kg": True})
 
 
-def test_parameter_template_has_no_assumed_measurements(model):
+def test_parameter_template_has_no_assumed_measurements(model, geometry_path):
     import json
 
     template = json.loads(
-        (GEOMETRY.parent / "duk_planar_parameters.example.json").read_text()
+        (geometry_path.parent / "duk_planar_parameters.example.json").read_text()
     )
     assert template["model"] == "planar_biped_7dof"
     assert template["parameters"].keys() == model.parameters.keys()

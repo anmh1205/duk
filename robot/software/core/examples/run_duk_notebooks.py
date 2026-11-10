@@ -7,7 +7,6 @@ from pathlib import Path
 import nbformat
 from nbclient import NotebookClient
 
-
 NOTEBOOKS = (
     "kinematics/duk-leg-kinematics.ipynb",
     "motion/duk-leg-motion.ipynb",

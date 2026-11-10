@@ -44,6 +44,8 @@ duk/
 │   │   │   ├── src/duk_core/
 │   │   │   │   ├── modeling/           # Mathematical models
 │   │   │   │   ├── control/            # Control algorithms
+│   │   │   │   ├── estimation/         # Sensor algorithms and replay
+│   │   │   │   ├── simulation/         # Numerical experiment orchestration
 │   │   │   │   └── visualization/      # Reusable plotting and animation
 │   │   │   ├── notebooks/
 │   │   │   │   ├── kinematics/         # Interactive kinematics
@@ -117,7 +119,9 @@ Git preserves intentional empty directories using `.gitkeep`. The tree omits tho
 
 ## Documentation tree
 
-The documentation hierarchy is reserved at full project scope. Only the directory layout and navigation have been agreed; technical pages are placeholders until their respective topics have been decided.
+The documentation hierarchy reserves the full project scope. Populated pages
+describe established work, including the Python core layers and development
+checks. Other technical pages remain placeholders until their topics are decided.
 
 ```text
 docs/
@@ -139,7 +143,7 @@ docs/
 │   └── hardware-validation.md          # Reserved: hardware verification
 ├── software/
 │   ├── README.md                       # Software navigation
-│   ├── core.md                         # Reserved: robotics core specification
+│   ├── core.md                         # Implemented Python layers and dependency boundaries
 │   ├── ros2.md                         # Reserved: ROS 2 integration
 │   ├── firmware.md                     # Reserved: embedded software
 │   └── diagnostics.md                  # Reserved: diagnostics
@@ -165,7 +169,7 @@ docs/
 │   ├── README.md                       # Development navigation
 │   ├── getting-started.md              # Reserved: onboarding
 │   ├── environment.md                  # Reserved: environment instructions
-│   ├── engineering-rules.md            # Reserved: engineering practices
+│   ├── engineering-rules.md            # Enforced Python conventions and verification
 │   ├── testing.md                      # Reserved: testing procedures
 │   ├── documentation.md                # Reserved: documentation policy
 │   └── troubleshooting.md              # Reserved: troubleshooting

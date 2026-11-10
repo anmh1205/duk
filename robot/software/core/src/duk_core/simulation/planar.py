@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from .contact_dynamics import CompliantContact, compliant_planar, rigid_rolling
+from ..modeling.contact_dynamics import (
+    CompliantContact,
+    compliant_planar,
+    rigid_rolling,
+)
+from ..modeling.planar_numeric import NumericPlanarBiped
 
 
 @dataclass(frozen=True)
@@ -29,19 +35,19 @@ class PlanarTrace:
 
 
 def simulate_planar(
-    model,
-    initial,
-    times,
-    input_at,
-    friction,
+    model: NumericPlanarBiped,
+    initial: np.ndarray,
+    times: np.ndarray,
+    input_at: Callable[[float, np.ndarray], np.ndarray],
+    friction: np.ndarray,
     *,
-    mode,
+    mode: str,
     contact_law: CompliantContact | None = None,
-    max_step,
-    rtol,
-    atol,
-    force_atol=1e-9,
-):
+    max_step: float,
+    rtol: float,
+    atol: float,
+    force_atol: float = 1e-9,
+) -> PlanarTrace:
     """Run an explicit contact model and retain the terminal sample at a guard."""
     times, friction = np.asarray(times, dtype=float), np.asarray(friction, dtype=float)
     initial = np.asarray(initial, dtype=float)

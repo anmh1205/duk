@@ -1,7 +1,7 @@
 """Analytical ideal loading and optional illustrative motor envelopes."""
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

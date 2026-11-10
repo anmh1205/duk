@@ -5,8 +5,8 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 
-from duk_core.modeling.planar_experiment import simulate_planar
 from duk_core.modeling.planar_numeric import PlanarDynamics
+from duk_core.simulation.planar import simulate_planar
 
 
 class GuardModel:

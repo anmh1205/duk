@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 import pytest
+
 from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
 from duk_core.modeling.ground_contact import place_biped_on_ground, place_leg_on_ground
 

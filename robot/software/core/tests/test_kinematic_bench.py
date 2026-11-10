@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 import pytest
+
 from duk_core.modeling import load_leg_geometry_json
 from duk_core.modeling.kinematic_bench import KinematicBench
 

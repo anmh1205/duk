@@ -110,7 +110,7 @@ def test_projection_cannot_bypass_motor_limits_with_a_wide_interval():
 def test_held_torque_step_rejects_intermediate_contact_failure(violation):
     from types import SimpleNamespace
 
-    from duk_core.control.height_balance import _rolling_step
+    from duk_core.simulation.height import _rolling_step
 
     def response(normal):
         return SimpleNamespace(
@@ -134,7 +134,7 @@ def test_held_torque_step_rejects_intermediate_contact_failure(violation):
 
 
 def test_infeasible_balance_interval_discards_queued_torque(monkeypatch):
-    from duk_core.control import sagittal_balance
+    from duk_core.simulation import balance as sagittal_balance
 
     model = WheeledPendulum(0.6, 0.00169, 3.5, 0.06, 0.18, 0.075, 9.81)
     intervals = iter([(-3.0, 3.0), (-3.0, 3.0), None])
@@ -169,7 +169,7 @@ def test_infeasible_balance_interval_discards_queued_torque(monkeypatch):
 def test_sample_grid_has_no_rounding_tick_and_keeps_partial_tail(
     duration, period, count
 ):
-    from duk_core.control._sampled import sample_intervals
+    from duk_core.simulation._sampled import sample_intervals
 
     starts, ends = sample_intervals(duration, period)
     assert len(starts) == count
@@ -209,7 +209,7 @@ def test_finite_slip_obeys_motor_power_and_friction_dissipation(seed):
 
 @pytest.mark.parametrize("horizon", [1, 5])
 def test_unconstrained_mpc_matches_riccati_feedback(horizon):
-    from duk_core.control.height_balance import HeightSample, _mpc
+    from duk_core.control.height_balance import HeightSample, height_mpc_command
 
     a, b = np.array([[0.0, 1.0], [1.0, 0.0]]), np.array([[0.0], [1.0]])
     q, r = np.diag([2.0, 0.5]), np.array([[0.3]])
@@ -225,6 +225,6 @@ def test_unconstrained_mpc_matches_riccati_feedback(horizon):
         np.zeros(1),
     )
     error = np.array([0.2, -0.1])
-    command = _mpc([sample] * horizon, error, q, r, design.cost, 100.0)
+    command = height_mpc_command([sample] * horizon, error, q, r, design.cost, 100.0)
     # SLSQP stops on objective tolerance (1e-9), so compare control to O(sqrt(ftol)).
     assert command == pytest.approx(-(design.gain @ error)[0], abs=1e-4)

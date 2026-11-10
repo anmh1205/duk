@@ -17,6 +17,9 @@
 | `examples/duk_leg_kinematics.py` | Numerical inspection of current physical geometry |
 | `tests/` | Equation, topology, rigid-body, workspace, Jacobian and notebook validation |
 | `notebooks/` | Kinematics and motion workbenches built on the reusable core API |
+| `src/duk_core/estimation/` | Complementary pitch and slip-gated velocity replay |
+| `src/duk_core/control/` | LQR/MPC, effort feasibility, QP/HQP allocation and task policies |
+| `src/duk_core/simulation/` | Numerical plant execution, synthetic observations, scenarios and result traces |
 
 The physical source is `robot/config/physical/duk_leg_geometry.json`.
 
@@ -93,7 +96,7 @@ values; unknown/null values stay symbolic. See the [parameter template](../../co
 Install the optional research environment and run the sequence from the repo root.
 
 ```bash
-python -m pip install -e "./robot/software/core[test,research]"
+python -m pip install -e "./robot/software/core[test,research,dev]"
 OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py
 ```
 
@@ -106,6 +109,11 @@ uses thin disks on horizontal supports and a shared lateral rolling row in the a
 Independent soft contact forces still act at each wheel in the simulated plant.
 The sensor, driver and stop policies are explicit simulation inputs.
 
+Simulation entry points are `duk_core.simulation.planar`, `.balance`, `.height`
+and `.whole_body`. `HipTrajectory` lives in `duk_core.modeling.trajectories`.
+The [core architecture](../../../docs/software/core.md) documents the module
+boundaries and import migration from the earlier notebook implementation.
+
 ## Code organization rules
 
 The research stack is intentionally separated by responsibility:
@@ -113,6 +121,13 @@ The research stack is intentionally separated by responsibility:
 1. **Modeling** owns equations, topology and invariants.
 2. **Visualization** consumes solved poses; it must not duplicate geometry equations.
 3. **Animation** updates Matplotlib artists from solved poses; it does not alter the robot model.
-4. **Notebooks** compose reusable APIs for investigation; equations that belong to the robot model must be moved into `duk_core` rather than copied into cells.
+4. **Simulation** composes models, controllers and estimators into experiments; those lower layers do not import simulation runners.
+5. **Notebooks** compose reusable APIs for investigation; equations that belong to the robot model must be moved into `duk_core` rather than copied into cells.
 
 Comments should explain physical meaning, mathematical intent and non-obvious constraints. They should not narrate trivial Python syntax line by line.
+
+Run `ruff check .`, `ruff format --check .` and `python -m pytest -q -m 'not ros'`
+from the repository root. These checks also cover the Python adapters and tools.
+See [engineering rules](../../../docs/development/engineering-rules.md) for the
+enforced conventions and [testing](../../../docs/development/testing.md) for ROS
+and notebook execution.

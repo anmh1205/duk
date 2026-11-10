@@ -7,7 +7,6 @@ import pytest
 np = pytest.importorskip("numpy")
 sp = pytest.importorskip("sympy")
 
-from test_planar_biped import GEOMETRY
 from duk_core.modeling import build_planar_biped_model, load_leg_geometry_json
 from duk_core.modeling.rolling_reduction import (
     lift_symmetric_rolling,
@@ -15,8 +14,8 @@ from duk_core.modeling.rolling_reduction import (
 )
 
 
-def test_lift_respects_rolling_and_projects_reaction_torque():
-    geometry = load_leg_geometry_json(GEOMETRY)
+def test_lift_respects_rolling_and_projects_reaction_torque(geometry_path):
+    geometry = load_leg_geometry_json(geometry_path)
     model = build_planar_biped_model(geometry)
     q = math.radians(105)
     lift = lift_symmetric_rolling(
@@ -40,8 +39,8 @@ def test_lift_respects_rolling_and_projects_reaction_torque():
     ) == pytest.approx([1000.0 / geometry.wheel_radius_mm, -1.0])
 
 
-def test_prescribed_hip_motion_matches_finite_differences():
-    geometry = load_leg_geometry_json(GEOMETRY)
+def test_prescribed_hip_motion_matches_finite_differences(geometry_path):
+    geometry = load_leg_geometry_json(geometry_path)
     q, dq, ddq = math.radians(105), 0.2, -0.4
     speed, lean_rate = 0.3, -0.5
 

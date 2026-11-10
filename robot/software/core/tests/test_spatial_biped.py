@@ -1,25 +1,21 @@
 """Spatial dynamics must reduce to the existing sagittal model."""
 
-import json
-
 import pytest
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("scipy")
 pytest.importorskip("sympy")
 
-from test_planar_biped import GEOMETRY
 from duk_core.modeling import build_planar_biped_model, load_leg_geometry_json
 from duk_core.modeling.planar_numeric import NumericPlanarBiped
 from duk_core.modeling.spatial_biped import SpatialBiped
 
 
 @pytest.fixture(scope="module")
-def spatial():
-    fixture_path = GEOMETRY.parents[3] / "research/experiments/duk-v3/synthetic.json"
-    data = json.loads(fixture_path.read_text())
+def spatial(geometry_path, research_inputs):
+    data = research_inputs
     planar = NumericPlanarBiped(
-        build_planar_biped_model(load_leg_geometry_json(GEOMETRY)), data["planar"]
+        build_planar_biped_model(load_leg_geometry_json(geometry_path)), data["planar"]
     )
     p = data["spatial"]
     return SpatialBiped(planar, p["lateral_mounts_m"], p["transverse_inertias_kg_m2"])
@@ -66,8 +62,9 @@ def test_spatial_task_rates_match_finite_differences(spatial):
 
 
 def test_free_spatial_motion_preserves_energy_to_first_order(spatial):
-    from duk_core.modeling.spatial_biped import SpatialState
     from scipy.spatial.transform import Rotation
+
+    from duk_core.modeling.spatial_biped import SpatialState
 
     q = np.r_[0.0, 0.5, 0.10, np.deg2rad([94.0, 101.0]), 0.3, -0.24]
     initial, _ = spatial.sagittal_state(q, [0.1, -0.05, 0.16, 0.4, -0.3, -0.6, 0.7])
@@ -136,17 +133,16 @@ def test_hierarchy_preserves_first_task_and_rejects_invalid_limits(spatial):
 
 @pytest.mark.parametrize("fault", ["sensor", "deadline"])
 def test_fault_discards_drive_request_before_a_partial_final_step(
-    spatial, monkeypatch, fault
+    spatial, monkeypatch, fault, research_inputs
 ):
-    from duk_core.control import whole_body_experiment
     from duk_core.modeling.hip_load import LinearTorqueSpeed
+    from duk_core.simulation import whole_body as whole_body_experiment
 
     def unexpected_allocation(*args, **kwargs):
         pytest.fail("A rejected sample must not reach the allocator")
 
     monkeypatch.setattr(whole_body_experiment, "allocate", unexpected_allocation)
-    fixture_path = GEOMETRY.parents[3] / "research/experiments/duk-v3/synthetic.json"
-    fixture = json.loads(fixture_path.read_text())
+    fixture = research_inputs
     settings = fixture["whole_body"] | {"substeps": 2}
     scenario = settings["scenario"] | {
         "duration_s": 0.007,
@@ -218,15 +214,16 @@ def test_hip_bounds_exclude_an_interior_overshoot(spatial, direction):
 
 
 @pytest.mark.parametrize("event", ["fall", "hip_travel"])
-def test_final_integration_step_cannot_hide_a_violation(spatial, monkeypatch, event):
+def test_final_integration_step_cannot_hide_a_violation(
+    spatial, monkeypatch, event, research_inputs
+):
     from scipy.spatial.transform import Rotation
-    from duk_core.control import whole_body_experiment
+
     from duk_core.modeling.hip_load import LinearTorqueSpeed
     from duk_core.modeling.spatial_biped import SpatialState
+    from duk_core.simulation import whole_body as whole_body_experiment
 
-    data = json.loads(
-        (GEOMETRY.parents[3] / "research/experiments/duk-v3/synthetic.json").read_text()
-    )
+    data = research_inputs
     settings = data["whole_body"] | {"substeps": 1}
     scenario = settings["scenario"] | {
         "duration_s": 0.007,
@@ -275,6 +272,7 @@ def test_final_integration_step_cannot_hide_a_violation(spatial, monkeypatch, ev
 
 def test_rolling_odometry_compensates_tilt_and_ignores_world_translation(spatial):
     from scipy.spatial.transform import Rotation
+
     from duk_core.modeling.spatial_biped import SpatialState
 
     velocity = np.array([0.2, 0.1, 0, 1, 0.4, -0.6, 0.3, -0.2, 0, 0.0])
@@ -300,10 +298,8 @@ def test_rolling_odometry_compensates_tilt_and_ignores_world_translation(spatial
 
 
 @pytest.fixture(scope="module")
-def damped_spatial(spatial):
-    data = json.loads(
-        (GEOMETRY.parents[3] / "research/experiments/duk-v3/synthetic.json").read_text()
-    )
+def damped_spatial(spatial, research_inputs):
+    data = research_inputs
     parameters = dict(spatial.planar.parameters) | {
         "b_q_L_N_m_s": 0.12,
         "b_q_R_N_m_s": 0.07,
@@ -321,6 +317,7 @@ def damped_spatial(spatial):
 def test_spatial_power_geometry_and_world_frame_invariants(damped_spatial, seed):
     from scipy.linalg import block_diag
     from scipy.spatial.transform import Rotation
+
     from duk_core.control.task_policy import wrap_angle
     from duk_core.modeling.spatial_biped import SpatialState
 
