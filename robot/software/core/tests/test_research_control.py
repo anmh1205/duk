@@ -176,3 +176,55 @@ def test_sample_grid_has_no_rounding_tick_and_keeps_partial_tail(
     np.testing.assert_allclose(starts[1:], ends[:-1], atol=0, rtol=0)
     assert np.all(ends > starts)
     assert ends[-1] == duration
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_finite_slip_obeys_motor_power_and_friction_dissipation(seed):
+    model = WheeledPendulum(0.6, 0.00169, 3.5, 0.06, 0.18, 0.075, 9.81)
+    rng = np.random.default_rng(seed)
+    lean, rate, speed, spin_rate, torque = rng.uniform(-0.4, 0.4, 5)
+    slip = speed - model.radius_m * spin_rate
+    response = model.finite_slip(lean, rate, torque, slip, 0.5, 0.02)
+    assert response.normal > 0
+    assert response.tangent * slip <= 0
+    assert abs(response.tangent) <= 0.5 * response.normal
+    c = model.upper_mass_kg * model.length_m
+    mass = np.array(
+        [
+            [model.upper_mass_kg + model.wheel_mass_kg, c * np.cos(lean), 0],
+            [c * np.cos(lean), model.moment, 0],
+            [0, 0, model.wheel_inertia_kg_m2],
+        ]
+    )
+    velocity = np.array([speed, rate, spin_rate])
+    energy_rate = (
+        velocity @ mass @ response.acceleration
+        - c * np.sin(lean) * speed * rate**2
+        - c * model.gravity_m_s2 * np.sin(lean) * rate
+    )
+    assert energy_rate == pytest.approx(
+        torque * (spin_rate - rate) + response.tangent * slip, abs=1e-11
+    )
+
+
+@pytest.mark.parametrize("horizon", [1, 5])
+def test_unconstrained_mpc_matches_riccati_feedback(horizon):
+    from duk_core.control.height_balance import HeightSample, _mpc
+
+    a, b = np.array([[0.0, 1.0], [1.0, 0.0]]), np.array([[0.0], [1.0]])
+    q, r = np.diag([2.0, 0.5]), np.array([[0.3]])
+    design = discrete_lqr(a, b, q, r, 0.05)
+    sample = HeightSample(
+        (0, 0, 0),
+        np.zeros(2),
+        0.0,
+        design.a,
+        design.b,
+        np.array([-100.0]),
+        np.zeros((1, 2)),
+        np.zeros(1),
+    )
+    error = np.array([0.2, -0.1])
+    command = _mpc([sample] * horizon, error, q, r, design.cost, 100.0)
+    # SLSQP stops on objective tolerance (1e-9), so compare control to O(sqrt(ftol)).
+    assert command == pytest.approx(-(design.gain @ error)[0], abs=1e-4)

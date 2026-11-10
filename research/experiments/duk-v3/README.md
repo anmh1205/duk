@@ -25,3 +25,30 @@ feasible endpoint. NB6 logs the applied command source. A fallback regulates
 speed toward zero and pauses optional tasks. It uses normal force shares from
 the simulator to estimate the traction available to equal wheel moments.
 These checks describe the numerical experiment and its stop policy.
+
+NB6 also constrains interior extrema of the constant-acceleration hip prediction.
+An outward velocity near a travel boundary can require braking before the end
+of the lookahead. The numerical plant checks travel, fall and prolonged flight
+at each integration substep. `terminal_pose` records the final integrated pose,
+and `peak_abs_lean_roll` includes those substeps. Controller rows still describe
+the state at command issue time. If travel leaves the four-bar assembly domain,
+the run stops with `hip_travel` and reports an unavailable terminal pose as NaN.
+Rolling odometry accounts for the tilted disk
+support geometry using body, carrier and wheel rotation rates.
+
+The [spatial regressions](../../../robot/software/core/tests/test_spatial_biped.py)
+check power balance with unequal viscous losses, contact-gap derivatives and
+horizontal frame transformations at ten reproducible synthetic states. They
+also cover hip travel between prediction endpoints and a fall on the final
+integration step. The [control regressions](../../../robot/software/core/tests/test_research_control.py)
+check motor work and dissipative slip at eight synthetic states and compare
+unconstrained MPC with the Riccati solution. These are equation and software
+checks, separate from physical parameter identification.
+
+For the nominal NB6 scenario, a step-refinement check held the 0.015 s controller
+period fixed and compared 40 versus 80 integration substeps per command. Both
+runs completed 0.9 s with all allocations solved. At controller ticks, the maximum
+body-height difference was 8.49e-6 m and the maximum lean difference was 1.94e-5 rad.
+The final body-height difference was 1.61e-6 m. This is a comparison of two step
+sizes on one synthetic trajectory. To repeat it, call `run_whole_body` with the
+same nominal inputs and change only `settings["substeps"]` from 40 to 80.

@@ -15,6 +15,7 @@ from .task_policy import FeatureTransition, Supervisor, return_to_anchor, wrap_a
 from .whole_body import AccelerationTask, Allocation, allocate
 from ..estimation.sagittal import SlipGatedVelocity
 from ..modeling.contact_dynamics import CompliantContact
+from ..modeling.leg_linkage import LinkageError
 from ..modeling.rolling_reduction import (
     lift_symmetric_rolling,
     symmetric_forward_wheel_input,
@@ -52,6 +53,8 @@ class WholeBodyTrace:
     command_source: tuple
     stop_reason: str | None
     terminal_time: float
+    terminal_pose: np.ndarray  # NaN if a travel violation leaves the linkage domain.
+    peak_abs_lean_roll: np.ndarray
 
 
 def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, priority):
@@ -155,6 +158,18 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
     previous_usage = 0.0
     stop_reason = None
     terminal_time = 0.0
+    peak_abs_lean_roll = np.zeros(2)
+
+    def fall_or_flight(kinematics, force, time):
+        nonlocal flight_started
+        supported = (kinematics.gaps <= p["contact_gap_m"]) & (force[:, 2] > 0)
+        if supported.any():
+            flight_started = None
+        elif flight_started is None:
+            flight_started = time
+        return np.max(abs(kinematics.tasks[[0, 2]])) > np.deg2rad(p["fall_deg"]) or (
+            flight_started is not None and time - flight_started > p["max_flight_s"]
+        )
 
     for tick, (t, end) in enumerate(zip(times, ends)):
         terminal_time = t
@@ -169,6 +184,8 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         )
         terms = model.evaluate(state)
         k = terms.kinematics
+        terminal_pose = k.tasks
+        peak_abs_lean_roll = np.maximum(peak_abs_lean_roll, abs(k.tasks[[0, 2]]))
         rate = k.task_jacobian @ state.velocity
         lean, height, roll, yaw = k.tasks
         c_speed = k.contact @ state.velocity
@@ -176,7 +193,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         current_speed = float(
             k.forward @ (k.linear[model.wheels] @ state.velocity).mean(axis=0)
         )
-        wheel_rates = (k.angular[model.wheels] @ state.velocity) @ -state.rotation[:, 1]
+        odometry = model.rolling_odometry(k, state.velocity).mean()
         if tick:
             independent = (current_speed - last_speed) / period + rng.normal(
                 0.0, p["accel_noise_m_s2"]
@@ -184,7 +201,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             estimate = observer.step(
                 period,
                 independent,
-                -model.radius * wheel_rates.mean(),
+                odometry,
                 in_contact=bool(supported.all()),
             )
             forward_estimate = estimate.speed
@@ -211,13 +228,7 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
             friction_belief[valid_force], p["friction_reserve"] * ratios
         )
 
-        if supported.any():
-            flight_started = None
-        elif flight_started is None:
-            flight_started = t
-        fallen = max(abs(lean), abs(roll)) > np.deg2rad(p["fall_deg"]) or (
-            flight_started is not None and t - flight_started > p["max_flight_s"]
-        )
+        fallen = fall_or_flight(k, previous_force, t)
         sensor_valid = not (fault and c["fault"] == "sensor")
         secondary_available = (
             all(mode == "rolling" for mode in modes)
@@ -496,10 +507,28 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
                 state, effort, friction, law, step
             )
             terminal_time = t + (index + 1) * step
-            if np.any(state.joints[:2] < hip_limits[0]) or np.any(
+            hip_travel = np.any(state.joints[:2] < hip_limits[0]) or np.any(
                 state.joints[:2] > hip_limits[1]
-            ):
+            )
+            try:
+                current = model.kinematics(state)
+            except LinkageError:
+                if not hip_travel:
+                    raise
+                # Stop on travel before requesting another dynamics evaluation
+                # at an impossible four-bar pose. No terminal pose is available.
+                terminal_pose = np.full(4, np.nan)
                 stop_reason = "hip_travel"
+                break
+            terminal_pose = current.tasks
+            peak_abs_lean_roll = np.maximum(
+                peak_abs_lean_roll, abs(current.tasks[[0, 2]])
+            )
+            if hip_travel:
+                stop_reason = "hip_travel"
+                break
+            if fall_or_flight(current, previous_force, terminal_time):
+                stop_reason = "flight_or_fall"
                 break
         if stop_reason is not None:
             break
@@ -514,4 +543,6 @@ def run_whole_body(model, hip_motor, weights, settings, scenario, *, method, pri
         tuple(command_sources),
         stop_reason,
         terminal_time,
+        terminal_pose,
+        peak_abs_lean_roll,
     )

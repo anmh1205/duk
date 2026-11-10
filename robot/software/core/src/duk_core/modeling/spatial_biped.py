@@ -248,6 +248,16 @@ class SpatialBiped:
             centers, linear, angular, inertias, contact, gaps, tasks, task_j, forward
         )
 
+    def rolling_odometry(self, kinematics, velocity):
+        """Per-wheel forward axle speed inferred from zero longitudinal slip.
+
+        The difference of the axle and contact rows cancels world translation.
+        It retains body, carrier and spin rotation about the tilted disk's
+        actual support point, rather than assuming a horizontal wheel axle.
+        """
+        rotation_rows = kinematics.linear[self.wheels] - kinematics.contact
+        return (rotation_rows @ velocity) @ kinematics.forward
+
     def evaluate(self, state, difference_step=1e-5):
         v = state.velocity
         current = self.kinematics(state)

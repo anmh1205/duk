@@ -62,15 +62,28 @@ def _physical_constraints(
         targets.append(np.array([-lateral @ correction[rolling].mean(axis=0)]))
     lower, upper = np.full(20, -np.inf), np.full(20, np.inf)
     lower[10:14], upper[10:14] = -effort_bounds, effort_bounds
-    hip_base = state.joints[:2] + lookahead * state.velocity[6:8]
+    hips, hip_rates = state.joints[:2], state.velocity[6:8]
+    hip_base = hips + lookahead * hip_rates
     lower[6:8] = 2 * (hip_limits[0] - hip_base) / lookahead**2
     upper[6:8] = 2 * (hip_limits[1] - hip_base) / lookahead**2
-    lower[6:8] = np.maximum(
-        lower[6:8], (-hip_speed_limit - state.velocity[6:8]) / lookahead
-    )
-    upper[6:8] = np.minimum(
-        upper[6:8], (hip_speed_limit - state.velocity[6:8]) / lookahead
-    )
+    # q(t) = q + v*t + a*t²/2 can exceed travel and return before lookahead.
+    # The tight bound occurs at t = 2*distance/abs(v) if that time is inside
+    # the interval. Its acceleration is the braking-distance bound v²/(2*d).
+    for side, (angle, rate) in enumerate(zip(hips, hip_rates)):
+        index = 6 + side
+        if not hip_limits[0] <= angle <= hip_limits[1] or abs(rate) > hip_speed_limit:
+            lower[index], upper[index] = np.inf, -np.inf
+            continue
+        distance = hip_limits[1] - angle if rate > 0 else angle - hip_limits[0]
+        if 2 * distance < abs(rate) * lookahead:
+            if distance == 0:
+                lower[index], upper[index] = np.inf, -np.inf
+            elif rate > 0:
+                upper[index] = min(upper[index], -(rate**2) / (2 * distance))
+            else:
+                lower[index] = max(lower[index], rate**2 / (2 * distance))
+    lower[6:8] = np.maximum(lower[6:8], (-hip_speed_limit - hip_rates) / lookahead)
+    upper[6:8] = np.minimum(upper[6:8], (hip_speed_limit - hip_rates) / lookahead)
 
     for side, mode in enumerate(modes):
         index = 14 + 3 * side
