@@ -159,6 +159,39 @@ def test_hierarchy_preserves_first_task_and_rejects_invalid_limits(spatial):
     assert impossible.status == "infeasible" and impossible.effort is None
 
 
+def test_hierarchy_keeps_a_feasible_command_when_both_wheels_are_airborne(spatial):
+    from duk_core.control.whole_body import AccelerationTask, allocate
+
+    q = np.r_[0.0, 0.5, 0.0, np.deg2rad([95.0, 95.0]), 0.0, 0.0]
+    state, _ = spatial.sagittal_state(q, np.zeros(7))
+    terms = spatial.evaluate(state)
+    # Unforced free fall is a feasible witness. Lower-priority tasks cannot
+    # make earlier attained outputs infeasible, even with all six forces fixed.
+    tasks = [AccelerationTask(str(i), np.eye(10)[i], 0.0, 1.0) for i in range(4)]
+    result = allocate(
+        terms,
+        state,
+        tasks,
+        ("flight", "flight"),
+        friction=np.full(2, 0.6),
+        effort_bounds=np.array([5.0, 5.0, 1.5, 1.5]),
+        hip_limits=np.deg2rad([78.0, 125.0]),
+        hip_speed_limit=7.0,
+        lookahead=0.08,
+        velocity_stabilization=7.0,
+        deadline_s=2.0,
+        method="hierarchical",
+    )
+    assert result.status == "solved"
+    np.testing.assert_allclose(result.solution[14:], 0.0, atol=1e-9)
+    np.testing.assert_allclose(result.solution[:2], 0.0, atol=2e-6)
+    np.testing.assert_allclose(
+        terms.mass @ result.solution[:10] + terms.bias,
+        terms.actuation @ result.effort,
+        atol=2e-6,
+    )
+
+
 @pytest.mark.parametrize("fault", ["sensor", "deadline"])
 def test_fault_discards_drive_request_before_a_partial_final_step(
     spatial, monkeypatch, fault, research_inputs

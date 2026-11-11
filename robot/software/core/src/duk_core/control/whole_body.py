@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 import numpy as np
-from scipy.linalg import qr
-from scipy.optimize import Bounds, LinearConstraint, minimize
+from numpy.typing import ArrayLike
+from scipy.optimize import LinearConstraint, minimize
+
+from ..modeling.spatial_biped import SpatialDynamics, SpatialState
 
 
 @dataclass(frozen=True)
@@ -119,34 +123,94 @@ def _physical_constraints(
     )
 
 
-def _independent_rows(matrix):
-    _, triangular, pivots = qr(matrix.T, mode="economic", pivoting=True)
-    diag = abs(np.diag(triangular))
-    rank = np.count_nonzero(diag > 1e-10 * max(1.0, diag[0]))
-    return pivots[:rank]
+def _equality_coordinates(matrix, target, lower, upper):
+    """Parameterize all equalities, including fixed variables, as x = origin + Z y."""
+    fixed = lower == upper
+    matrix = np.vstack((matrix, np.eye(len(lower))[fixed]))
+    target = np.r_[target, lower[fixed]]
+    # Row normalization keeps force/moment units and task scales from deciding rank.
+    norms = np.linalg.norm(matrix, axis=1)
+    norms = np.where(norms > 0, norms, 1.0)
+    left, singular, right = np.linalg.svd(matrix / norms[:, None], full_matrices=True)
+    rank = np.count_nonzero(singular > 1e-10 * singular[0])
+    origin = right[:rank].T @ ((left[:, :rank].T @ (target / norms)) / singular[:rank])
+    return origin, right[rank:].T
+
+
+def _constraint_residual(solution, eq, rhs, inequalities, lower, upper):
+    return float(
+        max(
+            np.max(abs(eq @ solution - rhs)),
+            np.max(inequalities @ solution, initial=0.0),
+            np.max(lower - solution),
+            np.max(solution - upper),
+        )
+    )
+
+
+def _minimize_task(eq, rhs, inequalities, lower, upper, task, desired, penalty, guess):
+    """Optimize only free coordinates; return a candidate for full verification."""
+    origin, basis = _equality_coordinates(eq, rhs, lower, upper)
+    fixed = lower == upper
+    equality_error = max(
+        np.max(abs(eq @ origin - rhs)),
+        np.max(abs(origin[fixed] - lower[fixed]), initial=0.0),
+    )
+    if not np.isfinite(equality_error) or equality_error > 2e-6:
+        return False, origin
+    if not basis.shape[1]:
+        return True, origin
+
+    # Fixed bounds already belong to the equality system. Remaining bounds and
+    # friction faces become linear inequalities in the reduced coordinates.
+    bounded = (~fixed) & (np.isfinite(lower) | np.isfinite(upper))
+    rows = np.vstack((inequalities @ basis, basis[bounded]))
+    lo = np.r_[np.full(len(inequalities), -np.inf), lower[bounded] - origin[bounded]]
+    hi = np.r_[-inequalities @ origin, upper[bounded] - origin[bounded]]
+    variable = np.linalg.norm(rows, axis=1) > 1e-12
+    if np.any(lo[~variable] > 2e-6) or np.any(hi[~variable] < -2e-6):
+        return False, origin
+    reduced = task @ basis
+    hessian = reduced.T @ reduced + penalty * np.eye(basis.shape[1])
+    gradient = reduced.T @ (task @ origin - desired) + penalty * basis.T @ origin
+    constraints = (
+        [LinearConstraint(rows[variable], lo[variable], hi[variable])]
+        if np.any(variable)
+        else []
+    )
+    result = minimize(
+        lambda y: 0.5 * y @ hessian @ y + gradient @ y,
+        basis.T @ (guess - origin),
+        jac=lambda y: hessian @ y + gradient,
+        method="SLSQP",
+        constraints=constraints,
+        options={"ftol": 1e-9, "maxiter": 60},
+    )
+    return result.success, origin + basis @ result.x
 
 
 def allocate(
-    terms,
-    state,
-    tasks,
-    modes,
+    terms: SpatialDynamics,
+    state: SpatialState,
+    tasks: Sequence[AccelerationTask],
+    modes: Sequence[str],
     *,
-    friction,
-    effort_bounds,
-    hip_limits,
-    hip_speed_limit,
-    lookahead,
-    velocity_stabilization,
-    deadline_s,
-    method,
-    initial=None,
-):
+    friction: ArrayLike,
+    effort_bounds: ArrayLike,
+    hip_limits: ArrayLike,
+    hip_speed_limit: float,
+    lookahead: float,
+    velocity_stabilization: float,
+    deadline_s: float,
+    method: Literal["weighted", "hierarchical"],
+    initial: ArrayLike | None = None,
+) -> Allocation:
     """Solve weighted or lexicographic least squares with hard physics.
 
-    Keep all rows for verification, even if the optimizer needs a smaller
-    independent equality basis. A timeout or an inaccurate/infeasible result
-    returns no command.
+    Eliminate hard equalities and fixed variables before optimizing. The 20-entry
+    solution is [world/joint acceleration (10), effort (4), world force L/R (6)].
+    All original constraints and higher-priority outputs remain checked. A timeout
+    or an inaccurate/infeasible result returns no command.
     """
     if method not in {"weighted", "hierarchical"} or not tasks:
         raise ValueError(
@@ -179,8 +243,19 @@ def allocate(
         or hip_limits[0] >= hip_limits[1]
     ):
         raise ValueError("Invalid friction, effort or hip bounds")
-    if any(not np.isfinite(task.scale) or task.scale <= 0 for task in tasks):
-        raise ValueError("Task scales must be finite and positive")
+    if any(
+        np.shape(task.row) != (10,)
+        or not np.isfinite(task.row).all()
+        or not np.isfinite([task.target, task.scale]).all()
+        or task.scale <= 0
+        for task in tasks
+    ):
+        raise ValueError(
+            "Tasks require ten finite coefficients, a finite target and positive scale"
+        )
+    guess = np.zeros(20) if initial is None else np.asarray(initial, dtype=float)
+    if guess.shape != (20,) or not np.isfinite(guess).all():
+        raise ValueError("Initial allocation must contain twenty finite values")
 
     start = perf_counter()
     eq, rhs, inequalities, lower, upper = _physical_constraints(
@@ -201,46 +276,33 @@ def allocate(
     eq *= scales
     inequalities *= scales
     lower, upper = lower / scales, upper / scales
-    guess = np.zeros(20) if initial is None else np.asarray(initial) / scales
-    guess = np.clip(guess, lower, upper)
+    guess = np.clip(guess / scales, lower, upper)
     groups = [tasks] if method == "weighted" else [(task,) for task in tasks]
     max_residual = np.inf
     for index, group in enumerate(groups):
         if perf_counter() - start > deadline_s:
             return Allocation("deadline", None, max_residual, perf_counter() - start)
-        independent = _independent_rows(eq)
-        constraints = [
-            LinearConstraint(eq[independent], rhs[independent], rhs[independent])
-        ]
-        if inequalities.size:
-            constraints.append(LinearConstraint(inequalities, -np.inf, 0.0))
         task_matrix = np.array(
             [np.r_[task.row, np.zeros(10)] * scales / task.scale for task in group]
         )
         desired = np.array([task.target / task.scale for task in group])
         regularization = 1e-6 if index + 1 == len(groups) else 0.0
-        hessian = task_matrix.T @ task_matrix + regularization * np.eye(20)
-        gradient = -task_matrix.T @ desired
-        result = minimize(
-            lambda x: 0.5 * x @ hessian @ x + gradient @ x,
+        success, guess = _minimize_task(
+            eq,
+            rhs,
+            inequalities,
+            lower,
+            upper,
+            task_matrix,
+            desired,
+            regularization,
             guess,
-            jac=lambda x: hessian @ x + gradient,
-            method="SLSQP",
-            bounds=Bounds(lower, upper),
-            constraints=constraints,
-            options={"ftol": 1e-9, "maxiter": 60},
         )
         elapsed = perf_counter() - start
-        guess = result.x
-        max_residual = max(
-            np.max(abs(eq @ guess - rhs)),
-            np.max(inequalities @ guess, initial=0.0),
-            np.max(lower - guess),
-            np.max(guess - upper),
-        )
+        max_residual = _constraint_residual(guess, eq, rhs, inequalities, lower, upper)
         if elapsed > deadline_s:
             return Allocation("deadline", None, float(max_residual), elapsed)
-        if not result.success or not np.isfinite(max_residual) or max_residual > 2e-6:
+        if not success or not np.isfinite(max_residual) or max_residual > 2e-6:
             return Allocation("infeasible", None, float(max_residual), elapsed)
         if index + 1 < len(groups):
             eq = np.vstack((eq, task_matrix))

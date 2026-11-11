@@ -45,6 +45,17 @@ flowchart TD
 | NB5 | `duk_core.simulation.height.compare_height_policies` |
 | NB6 | `duk_core.simulation.whole_body.run_whole_body` |
 
+The whole-body allocator solves weighted or hierarchical acceleration tasks.
+Before optimization, it includes fixed effort/contact-force bounds in the hard
+equalities and uses a row-normalized SVD to express the scaled decision vector
+as `x = x0 + Z y`. Only the free coordinates `y` reach the optimizer; friction
+and remaining bounds are projected into that space. This also handles flight,
+where zero contact forces can make otherwise distinct equality rows dependent.
+Each hierarchical stage locks its attained task output before the next stage.
+The original dynamics, contact equations, force/effort/travel bounds and locked
+outputs are checked before returning a command. The objective, priority order
+and physical constraints are unchanged by this numerical reduction.
+
 The spatial experiment coordinates four internal components. Initialization
 binds the starting stance and fallback design. The observation/guard component
 owns sensor replay, friction belief and integration stop conditions. The
