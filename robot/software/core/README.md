@@ -100,6 +100,23 @@ python -m pip install -e "./robot/software/core[test,research,dev]"
 OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py
 ```
 
+List the studies, or rerun selected notebooks while retaining canonical order:
+
+```bash
+python robot/software/core/examples/run_duk_notebooks.py --list
+OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py \
+  --notebook control/duk-height-balance.ipynb \
+  --output-dir data/results/duk-v3 --timeout 300
+```
+
+Repeat `--notebook` to select several studies. The timeout applies to each code
+cell. With `--output-dir`, a failed execution is also saved for inspection, and
+the process still exits with an error. Source notebooks are never overwritten.
+Each saved notebook embeds a `duk_run` manifest. The output directory also gets
+`run-manifest.json` and `source-snapshot.tar.gz`, recording source/input hashes,
+the Git state and Python/package versions. The snapshot includes uncommitted
+source and input files; a commit hash alone cannot reproduce a dirty checkout.
+
 Use `--output-dir data/results/duk-v3` to save executed notebook copies with plots
 and printed outcomes. The runner requires executed copies to stay outside the
 source notebook tree. The [experiment inputs](../../../research/experiments/duk-v3/README.md)
@@ -109,10 +126,85 @@ uses thin disks on horizontal supports and a shared lateral rolling row in the a
 Independent soft contact forces still act at each wheel in the simulated plant.
 The sensor, driver and stop policies are explicit simulation inputs.
 
+### Inspect notebook results
+
+Run all cells in order with a live Python kernel. NB1 includes an angle slider
+and a body/world frame switch. The motion study displays analytical velocity
+and acceleration of its prescribed sine profile. NB2 separates quantities with
+different units into individual panels. NB3–NB6 include compact result tables;
+NB4 adds a recovery map using its declared angle, speed and horizon criteria.
+
+NB4–NB6 have case pickers for inspecting cached trials without repeating the
+simulation. NB5 marks the final integrated lean; NB6 marks the terminal pose and
+shows allocator, supervisor and contact timelines through the actual stop time.
+Held wheel-command and feature curves continue through the last applied interval,
+including a partial interval. An instantaneous stop is not extended past its
+actual stop time. The NB5 comparison shows the declared bounds in all three
+trajectory columns.
+PASS refers to the criterion printed with that table. A completed simulation
+does not by itself establish recovery or satisfy the angle criteria.
+
+The pickers require a live kernel. Executed copies also contain an ordinary
+initial figure and result tables that can be read without a widget manager.
+Shared presentation helpers live in
+[`visualization/notebook.py`](src/duk_core/visualization/notebook.py); they consume
+computed results and do not own model equations or controller decisions.
+
+Planar CoM acceleration is available as
+`NumericPlanarBiped.center_of_mass_acceleration(configuration, velocity, acceleration)`
+in world `(x, z)` order and m/s². NB3 uses this analytic body-kinematics result;
+diagnostics do not probe neighbouring configurations outside the linkage branch.
+`upper_body_angle_derivatives(q)` supplies analytic first/second derivatives of
+the equivalent upper CoM angle along equal left/right hip motion. NB5 uses this
+API for its nominal posture path, including valid poses near a geometric boundary.
+
+The spatial experiment applies an impulse at the first command sample at or
+after its configured time, consistent with sampled friction and fault changes.
+It does not apply impulses at or beyond the terminal horizon.
+
 Simulation entry points are `duk_core.simulation.planar`, `.balance`, `.height`
 and `.whole_body`. `HipTrajectory` lives in `duk_core.modeling.trajectories`.
 The [core architecture](../../../docs/software/core.md) documents the module
 boundaries and import migration from the earlier notebook implementation.
+
+LQR/MPC APIs validate finite, consistent state-space dimensions and symmetric
+quadratic costs: state/terminal costs must be positive semidefinite and effort
+costs positive definite. Invalid problem data raises `ValueError`; a valid but
+infeasible MPC problem returns `None`. MPC supports stages with no force rows
+while retaining motor bounds. Linearization accepts array-like callback outputs
+and preserves evaluations when a callback reuses its output buffer.
+
+Contact APIs require finite measurements and nonnegative friction. The compliant
+law accepts scalar or broadcastable contact batches with one/two tangential
+components; tangential forces oppose slip and remain inside the friction cone.
+NB3 plots reconstructed forces, tangential dissipation and the slip detector's
+confusion matrix over both high- and low-grip sensor replays, with explicit class
+counts. These short synthetic trials do not establish long-duration detector
+performance. NB5 asserts its declared criteria for all twelve baseline cases.
+`PlanarTrace.force_admissible` describes force bounds; it does
+not imply sticking. The original `rolling_feasible` field remains available.
+Rigid rolling accepts scalar/per-wheel finite nonnegative friction and validates
+effort and tolerance before solving; invalid inputs raise `ValueError`.
+
+NB6 records the synthetic plant friction and a copy of the observer's belief at
+each sample. Its low-grip chart exposes observation delay and belief updates.
+The observed ratio uses the Euclidean tangent-force norm of the plant law,
+so rotating the slip direction does not change the inferred coefficient. The
+allocator retains its existing inscribed linear friction constraints.
+
+NB6 bounce feedforward differentiates both the sine wave and feature
+participation. The existing ramp remains piecewise linear: its rate can jump at
+transition breakpoints. Height acceleration describes the regular derivative
+between those breakpoints, without an impulsive term or a claim of C² motion.
+
+The [2026-11-11 Notion v3 correction review](../../../research/experiments/duk-v3/notion-v3-review.md)
+records the updated sign mapping, conditional contact rank and exact-versus-rounded
+pendulum inputs. `WheeledPendulum.upright_characteristics()` reports the local
+unstable pole, angle e-folding time and torque-to-axle-position positive zero.
+`sample_bench_leg(...).projected_hip_clearance_mm` reports signed 2D A–wheel
+clearance, which does not establish CAD collision. NB1/NB2 expose geometric and
+static-load cautions; NB4 displays both numerical references and inverse position
+response; NB6 demonstrates why rank five is conditional on axle alignment.
 
 ## Code organization rules
 

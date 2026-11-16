@@ -17,6 +17,45 @@ The [Python workflow](../../.github/workflows/python-core.yml) installs
 - Python source compilation;
 - all seven source notebooks in fresh Jupyter kernels, covering NB1–NB6.
 
+Source-notebook tests also keep execution counts and outputs out of the committed
+files. Ruff and fresh-kernel execution cover notebook syntax; unit tests do not
+duplicate compilation or search notebook source for plotting-function names.
+Geometry invariants are checked across the workspace rather than repeating a
+single-pose test or hard-coding configuration dictionaries.
+The runner checks saved Output-widget state for captured callback errors,
+which otherwise need not fail a notebook cell. Presentation regressions verify
+static initial figures, cached-case updates and timelines that end at the actual
+stop instant. The numerical regressions cover off-grid impulse timing and invalid
+sensor replay without partially updating the observer.
+Planar CoM diagnostics are checked against the second derivative of the composed
+CoM position, gravity-only flight and vertical contact-force balance. Boundary
+cases exercise both hips near both geometric limits. Held-command plots are
+checked for the correct integral over a partial last interval and for an
+instantaneous stop without invented post-stop duration.
+Controller regressions compare time-varying multi-input LQR and scalar-input MPC
+against a full quadratic objective recovered by evaluation, including motor and
+force bounds, empty force rows, zero state cost and malformed problem data.
+Contact regressions check unilateral support, friction-cone bounds and passive
+tangential power over batched 1D/2D inputs, and reject malformed rigid force inputs.
+Real two-kernel runner tests cover stdout-only execution, saved execution and a
+failure in the second kernel. They check source preservation, the original error,
+embedded provenance and archived source hashes. NB6 reference derivatives are
+compared with the admitted height path during entry, exit and capacity reduction,
+away from the piecewise-linear ramp breakpoints.
+NB3 includes a high-grip replay in the detector's negative population and reports
+class counts. NB5 fails execution if a baseline case violates its declared
+completion/lean criterion; intentionally unsuccessful NB6 stress cases still
+report their separate outcomes.
+The symmetric upper CoM angle derivatives are compared with composed mass
+properties, then exercised near both branch boundaries. A one-interval height
+study checks that a valid near-boundary posture does not fail because of an
+outside derivative probe. The shared angle primitive also recovers the exact
+speed and acceleration of prescribed rotating directions.
+Friction-observer regressions rotate the same compliant contact through axis and
+diagonal slip directions. The configured reserve must give the same inferred
+coefficient in each direction. NB6 assertions also check the friction input
+change and preserve the initial belief after later updates in the recorded trace.
+
 The workflow runs for pull requests and relevant changes pushed to `main`. This keeps the numerical package independently testable without ROS or Docker.
 
 From the repository root, run:

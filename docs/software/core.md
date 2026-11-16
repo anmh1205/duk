@@ -94,6 +94,77 @@ set. Package initializers keep these dependencies out of lightweight imports.
 Animation consumes canonical solved poses and updates drawing artists without
 reimplementing the mechanism.
 
+The notebook presentation module provides scalar HTML result tables, categorical
+timelines and cached-case figure pickers. It consumes arrays and drawing callbacks,
+without importing simulation runners. The first selected figure is also a normal
+notebook output for reading executed copies without a widget manager. Interactive
+changes require a live kernel. Timelines preserve the actual terminal time and
+show an instantaneous stop as a marker rather than inventing a final interval.
+The held-signal plotter repeats the final command only through the actual interval
+end, preserving partial intervals and NaN gaps for rejected commands. Continuous
+state curves remain separate from these zero-order-held command curves.
+
+`NumericPlanarBiped.center_of_mass_acceleration` computes the mass-weighted body
+accelerations `J a + Jdot v` in world `(x, z)` coordinates. The planar simulation
+uses its vertical component for contact-force diagnostics. This avoids finite
+differences at neighbouring configurations, which can leave the physical assembly
+branch even when the simulated state is valid. Tests compare the acceleration
+with independent CoM position differences and whole-system linear momentum.
+For symmetric prescribed hip motion, `upper_body_angle_derivatives(q)` combines
+the same body Jacobians and analytic curvature about the common axle. NB5 uses
+these angle derivatives instead of probing nearby postures. The underlying
+atan2 derivative primitive is shared with the spatial task acceleration bias.
+
+Velocity replay validates the complete synchronized record before changing its
+observer. Times must increase, numerical channels must be finite and contact
+flags must be boolean. Index zero is the initial prior, not an accepted odometry
+correction; later accelerations describe the interval ending at that sample.
+Spatial impulse scheduling likewise respects command sample times: a configured
+impulse is applied once at the first sample at or after its requested time,
+and is not applied when no such command sample remains.
+
+Control problem validation is shared within the control package. State-space
+matrices must have consistent finite dimensions; state/terminal quadratic weights
+are symmetric positive semidefinite, and effort weights positive definite.
+The finite-horizon LQR and condensed MPC implementations are checked against an
+independently recovered full quadratic minimum. Empty force-constraint rows are
+valid in MPC; motor bounds still apply. Invalid data raises `ValueError`, distinct
+from an infeasible solve returning `None`. Central-difference linearization copies
+each callback result before the next evaluation can overwrite a reused buffer.
+
+Contact force evaluation validates finite channels, broadcast dimensions and
+nonnegative friction before computing forces. The compliant law retains
+unilateral normal support and dissipative regularized tangential force, with one
+or two tangent components. The wheel-pendulum slip law checks the same friction
+sign and requires a positive slip scale.
+
+The spatial observer uses `||F_t||₂ / N` when updating its friction belief during
+sliding with sufficient support. This matches the isotropic plant's force norm
+and avoids a direction-dependent estimate from `|F_x| + |F_y|`. The allocator
+retains its linear inscribed friction cone. `WholeBodyTrace` records independent
+snapshots of `friction_belief` and the synthetic `actual_friction` input. Force
+observations remain from the preceding integration substep; a surface change can
+precede observation, as shown in the low-grip notebook chart.
+
+Feature participation exposes its piecewise-linear rate. The bounce reference
+uses the product rule for height, rate and the regular acceleration within each
+ramp segment. Starts, target changes, saturation and pause can change that rate
+discontinuously; no acceleration-smooth envelope or impulsive acceleration is
+introduced. Geometry, task weights and ramp-time settings are unchanged.
+
+The notebook runner owns execution provenance. Saved notebooks embed source/input
+hashes, Git state and Python/package versions; the run directory also stores that
+manifest and a source/input archive, including files not yet committed. Interactive
+setup cells print the commit/dirty state and input hashes; use the runner's saved
+outputs when the complete execution record is needed.
+
+The [Notion v3 correction review](../../research/experiments/duk-v3/notion-v3-review.md)
+documents the canonical CCW to +x pendulum mapping and source provenance.
+The core retains its correct `Ȯₓ + rφ̇ = 0` rolling sign and canonical wheel-force
+estimate. Pendulum pole/zero diagnostics live in `modeling/wheeled_pendulum.py`;
+projected A–wheel clearance lives in `modeling/kinematic_bench.py`. Both expose
+model diagnostics without introducing unidentified hardware parameters.
+
 [Core usage and notebooks](../../robot/software/core/README.md) ·
 [Engineering rules](../development/engineering-rules.md) ·
 [Testing](../development/testing.md).
