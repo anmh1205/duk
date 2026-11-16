@@ -70,6 +70,16 @@
     ],
     "torque_scale_N_m": 1.5
   },
+  "handbook_linear_reference": {
+    "source": "DUK v3 chapter 06 section 5, corrected 2026-11-11. Illustrative aggregate values, not identified hardware. Wheel inertia is the aggregate solid-disk value 0.5*m_w*r_w^2; rotor inertia is excluded.",
+    "wheel_mass_kg": 0.6,
+    "wheel_inertia_kg_m2": 0.0016875,
+    "upper_mass_kg": 3.5,
+    "upper_inertia_kg_m2": 0.06,
+    "length_m": 0.18,
+    "radius_m": 0.075,
+    "gravity_m_s2": 9.80665
+  },
   "planar_contact": {
     "stiffness": 24000.0,
     "damping": 70.0,

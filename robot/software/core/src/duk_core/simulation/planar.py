@@ -33,6 +33,15 @@ class PlanarTrace:
     carrier_rate: np.ndarray
     termination: str
 
+    @property
+    def force_admissible(self) -> np.ndarray:
+        """Force feasibility for the selected law; this does not establish sticking.
+
+        rolling_feasible is retained as the original field name for callers.
+        A compliant force can be admissible while the wheel is slipping.
+        """
+        return self.rolling_feasible
+
 
 def simulate_planar(
     model: NumericPlanarBiped,
@@ -146,15 +155,7 @@ def simulate_planar(
             dynamics.contact[2:] @ a + dynamics.contact_bias[2:] - model.radius * a[5:]
         )
         energy = 0.5 * v @ dynamics.mass @ v + dynamics.potential
-        # G = m*g*dz_com/dq, so finite differences of G give the CoM convective term.
-        g = model.parameters["g_m_s2"]
-        dt = 1e-5
-        gravity_forward = model.evaluate(state[:7] + dt * v, v).gravity
-        gravity_backward = model.evaluate(state[:7] - dt * v, v).gravity
-        com_accel = dynamics.gravity @ a + (gravity_forward - gravity_backward) @ v / (
-            2 * dt
-        )
-        com_accel /= g * model.masses.sum()
+        com_accel = model.center_of_mass_acceleration(state[:7], v, a)[1]
         spin = dynamics.input[:, 2:].T @ v
         return (
             a,

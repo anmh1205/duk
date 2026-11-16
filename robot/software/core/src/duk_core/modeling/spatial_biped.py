@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from .leg_differential import angle_derivatives
 from .leg_linkage import solve_leg_pose
 from .planar_numeric import NumericPlanarBiped
 
@@ -40,10 +41,7 @@ def _disk_support(axle, radius, axle_rate=None):
 
 def _angle_bias(x, y, dx, dy, ddx, ddy):
     """Second derivative of atan2(y, x) along a constant-generalized-velocity path."""
-    squared = x * x + y * y
-    return (x * ddy - y * ddx) / squared - 2 * (x * dx + y * dy) * (
-        x * dy - y * dx
-    ) / squared**2
+    return angle_derivatives((x, y), (dx, dy), (ddx, ddy))[1]
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,12 @@ settings. The aggregate pendulum numbers in `v2_balance` come from the
 The [physical parameter template](../../../robot/config/physical/duk_planar_parameters.example.json)
 records unidentified parameters separately.
 
+The [2026-11-11 Notion correction review](notion-v3-review.md) records the source
+edits and their core/notebook interpretation. `handbook_linear_reference` uses
+the exact chapter 06 gravity and solid-disk inertia; `v2_balance` retains the
+rounded constants for its existing gain and scenario baseline. Both are
+illustrative aggregate models, not identified physical parameters.
+
 The notebooks log input hashes, commit, trial settings and outcomes. Keep
 generated outputs under `data/results/`. Motion, controller and fault results
 apply to the modeled conditions and numerical tolerances of each study.

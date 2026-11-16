@@ -14,6 +14,10 @@ class GuardModel:
     masses = np.array([1.0])
     parameters = {"g_m_s2": 10.0}
 
+    def center_of_mass_acceleration(self, q, v, a):
+        # V = m*g*(q[1] + q[3]) for this analytic guard fixture.
+        return np.array([0.0, a[1] + a[3]])
+
     def evaluate(self, q, v):
         gravity = np.array([0.0, 10.0, 0.0, 10.0, 0.0, 0.0, 0.0])
         return PlanarDynamics(

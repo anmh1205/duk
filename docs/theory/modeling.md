@@ -166,6 +166,11 @@ $$
 J_{roll,i}=\partial x_{Oi}/\partial\eta+r_w e_{\phi_i}^T.
 $$
 
+The [2026-11-11 DUK v3 correction review](../../research/experiments/duk-v3/notion-v3-review.md)
+reconciles this canonical CCW convention with chapters 05–07: equivalent CoM
+lean is θ_G0(q)−θ, pendulum wheel spin is −φ, and pendulum total wheel torque
+is −(τ_wL+τ_wR). Mathematical +x has not been assigned to physical front/back.
+
 J_c stacks both normal rows then both rolling rows. λ=[N_L,N_R,T_L,T_R] uses
 positive upward normal force and positive rightward tangential force. For an
 explicitly selected sticking-contact mode:

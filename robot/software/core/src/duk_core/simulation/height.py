@@ -108,10 +108,9 @@ def compare_height_policies(
     for time, end in zip(times, ends):
         motion = trajectory.evaluate(time)
         q, dq, ddq = motion
-        step = 1e-4
         lean_ref = posture(q)
-        first = (posture(q + step) - posture(q - step)) / (2 * step)
-        second = (posture(q + step) + posture(q - step) - 2 * lean_ref) / step**2
+        angle_first, angle_second = model.upper_body_angle_derivatives(q)
+        first, second = -angle_first, -angle_second
         desired = (
             second * dq**2
             + first * ddq

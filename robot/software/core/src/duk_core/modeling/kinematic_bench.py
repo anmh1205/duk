@@ -23,6 +23,7 @@ class BenchSample:
     carrier_area_error_mm2: float
     boundary_margin_rad: float
     loop_sine: float
+    projected_hip_clearance_mm: float
 
 
 def sample_bench_leg(
@@ -31,7 +32,12 @@ def sample_bench_leg(
     q_dot_rad_s: float = 0,
     q_ddot_rad_s2: float = 0,
 ) -> BenchSample:
-    """Use canonical geometry and analytic derivatives to inspect one leg."""
+    """Use canonical geometry and analytic derivatives to inspect one leg.
+
+    Projected clearance is |AO| minus wheel radius in the leg plane. A negative
+    value means the projected disk contains A, not a confirmed 3D collision:
+    lateral offsets and CAD geometry are still needed.
+    """
     if not all(math.isfinite(v) for v in (q_dot_rad_s, q_ddot_rad_s2)):
         raise ValueError("Profile rates must be finite")
     pose = solve_leg_pose(geometry, q_rad)
@@ -78,6 +84,7 @@ def sample_bench_leg(
         abs(area - geometry.bco_body.signed_double_area_mm2),
         min(q_rad - lower, upper - q_rad),
         abs(bc[0] * dc[1] - bc[1] * dc[0]) / (geometry.bc_mm * geometry.cd_mm),
+        math.dist(pose.point("A"), pose.o) - geometry.wheel_radius_mm,
     )
 
 

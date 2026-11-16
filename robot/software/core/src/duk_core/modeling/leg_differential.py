@@ -24,6 +24,31 @@ from .leg_linkage import (
 )
 
 
+def angle_derivatives(
+    direction: Point2, first: Point2, second: Point2
+) -> tuple[float, float]:
+    """Derivatives of atan2(y, x) along one parameterized nonzero direction.
+
+    Both derivatives use the parameter of the supplied vector derivatives,
+    which may be time or the linkage coordinate in radians.
+    """
+    x, y = direction
+    dx, dy = first
+    ddx, ddy = second
+    squared = x * x + y * y
+    if (
+        not all(math.isfinite(value) for value in (*direction, *first, *second))
+        or not math.isfinite(squared)
+        or squared <= 0
+    ):
+        raise ValueError("Angle derivatives require a finite, nonzero direction")
+    cross = x * dy - y * dx
+    return (
+        cross / squared,
+        (x * ddy - y * ddx) / squared - 2 * (x * dx + y * dy) * cross / squared**2,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class LegSecondDerivative:
     """d²(point)/dq² in mm/rad²; this is not yet a time acceleration."""

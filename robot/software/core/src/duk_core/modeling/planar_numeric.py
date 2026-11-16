@@ -8,7 +8,9 @@ from functools import cached_property
 from types import MappingProxyType
 
 import numpy as np
+from numpy.typing import ArrayLike
 
+from .leg_differential import angle_derivatives
 from .mass_properties import (
     PlanarRigidBody,
     combine_planar_mass_properties,
@@ -123,6 +125,22 @@ class NumericPlanarBiped:
         linear, angular = np.split(values, [2 * len(self.names)])
         return PlanarKinematicBias(linear.reshape(-1, 2), angular)
 
+    def center_of_mass_acceleration(
+        self, configuration: ArrayLike, velocity: ArrayLike, acceleration: ArrayLike
+    ) -> np.ndarray:
+        """Return world (x, z) CoM acceleration in m/s² at this configuration.
+
+        Use the mass-weighted body accelerations J a + Jdot v. No neighbouring
+        configurations are evaluated, including near a linkage branch boundary.
+        """
+        acceleration = np.asarray(acceleration, dtype=float)
+        if acceleration.shape != (7,) or not np.isfinite(acceleration).all():
+            raise ValueError("Expected seven finite generalized accelerations")
+        kinematics = self.kinematics(configuration)
+        bias = self.kinematic_bias(configuration, velocity)
+        body_acceleration = kinematics.jacobians @ acceleration + bias.linear
+        return self.masses @ body_acceleration / self.masses.sum()
+
     @cached_property
     def _dynamics(self):
         model = self.model
@@ -168,11 +186,7 @@ class NumericPlanarBiped:
     def equivalent_upper_body(self, q: float):
         """Compose the upper assembly about a common axle at equal left/right q."""
         state = self.kinematics([0.0, 0.0, 0.0, q, q, 0.0, 0.0])
-        left, right = state.centers[list(self.wheels)]
-        if not np.allclose(left, right, rtol=0, atol=1e-10):
-            raise ValueError(
-                "The symmetric reduction requires coincident projected wheel centers"
-            )
+        axle = self._symmetric_support(state)
         bodies = [
             PlanarRigidBody(mass, tuple(center * 1000.0), inertia)
             for i, (mass, center, inertia) in enumerate(
@@ -181,8 +195,38 @@ class NumericPlanarBiped:
             if i not in self.wheels
         ]
         return equivalent_pendulum_2d(
-            combine_planar_mass_properties(bodies), tuple(left * 1000.0)
+            combine_planar_mass_properties(bodies), tuple(axle * 1000.0)
         )
+
+    def _symmetric_support(self, kinematics):
+        left, right = kinematics.centers[list(self.wheels)]
+        if not np.allclose(left, right, rtol=0, atol=1e-10):
+            raise ValueError(
+                "The symmetric reduction requires coincident projected wheel centers"
+            )
+        return left
+
+    def upper_body_angle_derivatives(self, q: float) -> tuple[float, float]:
+        """Return d(angle)/dq and d²(angle)/dq² at equal hip coordinate q.
+
+        The angle is from vertical, as in equivalent_upper_body. Derivatives
+        use q in radians and evaluate only this configuration on its branch.
+        """
+        configuration = np.array([0.0, 0.0, 0.0, q, q, 0.0, 0.0])
+        kinematics = self.kinematics(configuration)
+        axle = self._symmetric_support(kinematics)
+        upper = [index for index in range(len(self.masses)) if index not in self.wheels]
+        weights = self.masses[upper] / self.masses[upper].sum()
+        direction = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0])
+        first = kinematics.jacobians @ direction
+        second = self.kinematic_bias(configuration, direction).linear
+        vectors = (
+            weights @ kinematics.centers[upper] - axle,
+            weights @ first[upper] - first[self.wheels[0]],
+            weights @ second[upper] - second[self.wheels[0]],
+        )
+        # Angle from vertical uses atan2(forward, up).
+        return angle_derivatives(*(tuple(vector[::-1]) for vector in vectors))
 
     def static_hip_effort(self, configuration, axle_forces_xz) -> np.ndarray:
         """Joint effort from gravity and specified external forces applied at O."""

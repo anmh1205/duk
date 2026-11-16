@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from duk_core.modeling import load_leg_geometry_json
-from duk_core.modeling.kinematic_bench import KinematicBench
+from duk_core.modeling.kinematic_bench import KinematicBench, sample_bench_leg
 
 CONFIG = Path(__file__).resolve().parents[3] / "config/physical/duk_leg_geometry.json"
 
@@ -14,6 +14,28 @@ CONFIG = Path(__file__).resolve().parents[3] / "config/physical/duk_leg_geometry
 @pytest.fixture
 def bench():
     return KinematicBench(load_leg_geometry_json(CONFIG))
+
+
+def test_handbook_projected_overlap_and_boundary_leverage(bench):
+    sample = sample_bench_leg(bench.geometry, math.radians(130))
+    assert math.dist(sample.pose.point("A"), sample.pose.o) == pytest.approx(
+        62.25, abs=0.1
+    )
+    assert sample.projected_hip_clearance_mm == pytest.approx(-12.75, abs=0.1)
+    assert (
+        sample_bench_leg(bench.geometry, math.radians(90)).projected_hip_clearance_mm
+        > 0
+    )
+    from duk_core.modeling import leg_jacobian, solve_leg_pose
+
+    jac = [
+        leg_jacobian(
+            bench.geometry, solve_leg_pose(bench.geometry, math.radians(q))
+        ).d_o
+        for q in (70, 135)
+    ]
+    assert jac[0][0] == pytest.approx(500, abs=1)
+    assert jac[1][1] == pytest.approx(2175, abs=1)
 
 
 def test_manual_angles_are_independent_and_invalid_update_is_atomic(bench):

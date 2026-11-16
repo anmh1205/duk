@@ -17,8 +17,24 @@ class WheelResponse:
 
 
 @dataclass(frozen=True)
+class UprightCharacteristics:
+    """Open-loop pole/zero rates in rad/s and angle e-folding time in seconds."""
+
+    unstable_pole_rad_s: float
+    angle_efolding_time_s: float
+    axle_position_rhp_zero_rad_s: float
+
+
+@dataclass(frozen=True)
 class WheeledPendulum:
-    """Aggregate the two wheels and the locked upper assembly separately."""
+    """Aggregate the two wheels and the locked upper assembly separately.
+
+    Lean, absolute wheel rotation and total wheel torque are positive toward
+    mathematical +x (DUK v3 chapters 05–07). Canonical planar body pitch,
+    wheel spin and wheel moments are CCW instead: lean = upper_offset - pitch,
+    spin = -spin_ccw, torque = -(torque_left_ccw + torque_right_ccw).
+    The wheel inertia excludes unmodeled reflected motor rotor inertia.
+    """
 
     wheel_mass_kg: float
     wheel_inertia_kg_m2: float
@@ -78,7 +94,25 @@ class WheeledPendulum:
         b[[1, 3], 0] = np.linalg.solve(mass_matrix, [1 / radius, -1])
         return a, b
 
+    def upright_characteristics(self) -> UprightCharacteristics:
+        """Return local open-loop limitations for torque to axle position.
+
+        The positive zero concerns axle position, not every possible output.
+        These are model diagnostics, not a controller delay or bandwidth limit.
+        """
+        a, _ = self.linearization()
+        pole = float(np.sqrt(a[3, 2]))
+        coupling = self.upper_mass_kg * self.length_m
+        zero = float(
+            np.sqrt(
+                coupling * self.gravity_m_s2 / (self.moment + coupling * self.radius_m)
+            )
+        )
+        return UprightCharacteristics(pole, 1.0 / pole, zero)
+
     def _axle_dynamics(self, lean, lean_rate, torque):
+        if not np.isfinite([lean, lean_rate, torque]).all():
+            raise ValueError("Lean, lean rate and torque must be finite")
         c = self.upper_mass_kg * self.length_m
         total_mass = self.upper_mass_kg + self.wheel_mass_kg
         cosine, sine = np.cos(lean), np.sin(lean)
@@ -98,7 +132,7 @@ class WheeledPendulum:
         )
         return mass, rhs, contact, normal_at_zero_acceleration, c * sine
 
-    def rolling(self, lean, lean_rate, torque):
+    def rolling(self, lean: float, lean_rate: float, torque: float) -> WheelResponse:
         mass, rhs, row, n0, coefficient = self._axle_dynamics(lean, lean_rate, torque)
         acceleration, tangent = constrained_acceleration(
             mass, rhs, row[None, :], np.zeros(1)
@@ -107,8 +141,24 @@ class WheeledPendulum:
             acceleration, float(tangent[0]), float(n0 - coefficient * acceleration[1])
         )
 
-    def finite_slip(self, lean, lean_rate, torque, slip, friction, slip_scale):
+    def finite_slip(
+        self,
+        lean: float,
+        lean_rate: float,
+        torque: float,
+        slip: float,
+        friction: float,
+        slip_scale: float,
+    ) -> WheelResponse:
         """Smooth tangential friction with height held while N is positive."""
+        if (
+            not np.isfinite([slip, friction, slip_scale]).all()
+            or friction < 0
+            or slip_scale <= 0
+        ):
+            raise ValueError(
+                "Slip law requires finite data, nonnegative friction and positive slip scale"
+            )
         mass, rhs, row, n0, coefficient = self._axle_dynamics(lean, lean_rate, torque)
         signed_ratio = friction * np.tanh(slip / slip_scale)
         coupled_mass = mass.copy()
