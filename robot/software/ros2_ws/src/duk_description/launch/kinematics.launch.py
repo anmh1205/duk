@@ -40,6 +40,10 @@ def start(context):
                     "robot_description": ParameterValue(urdf, value_type=str),
                     "use_sim_time": False,
                     "publish_frequency": 20.0,
+                    # Preserve every coupled pose at its original stamp. The
+                    # 20 Hz timer can tick slightly below the publisher's 50 ms
+                    # throttle; interpolating dropped poses opens the cut loop.
+                    "ignore_timestamp": True,
                 }
             ],
             output="screen",
