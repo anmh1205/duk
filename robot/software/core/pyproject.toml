@@ -13,6 +13,7 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
+dev = ["ruff==0.17.4"]
 symbolic = ["sympy>=1.12,<2"]
 research = [
   # Keep the NumPy 1.x ABI while ROS apt binary extensions may still target it.
@@ -21,7 +22,9 @@ research = [
   "sympy>=1.12,<2",
   "matplotlib>=3.8,<4",
   "jupyterlab>=4,<5",
-  "ipywidgets>=8,<9"
+  "ipywidgets>=8,<9",
+  "nbclient>=0.10,<1",
+  "ipykernel>=6,<8"
 ]
 
 [tool.setuptools.packages.find]

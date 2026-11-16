@@ -24,22 +24,12 @@ def test_combined_center_of_mass_and_parallel_axis_inertia() -> None:
             0.005,
         ),
     )
-    combined = combine_planar_mass_properties(
-        bodies
-    )
+    combined = combine_planar_mass_properties(bodies)
     assert combined.mass_kg == pytest.approx(4.0)
-    assert combined.center_mm == pytest.approx(
-        (10.0, 250.0)
-    )
-    expected_parallel_axis = (
-        3.0 * 0.010**2
-        + 1.0 * 0.030**2
-    )
-    assert (
-        combined.inertia_pitch_at_center_kg_m2
-        == pytest.approx(
-            0.025 + expected_parallel_axis
-        )
+    assert combined.center_mm == pytest.approx((10.0, 250.0))
+    expected_parallel_axis = 3.0 * 0.010**2 + 1.0 * 0.030**2
+    assert combined.inertia_pitch_at_center_kg_m2 == pytest.approx(
+        0.025 + expected_parallel_axis
     )
 
 
@@ -66,21 +56,10 @@ def test_equivalent_pendulum_geometry_and_inertia() -> None:
         0.010,
         0.250,
     )
-    assert pendulum.length_m == pytest.approx(
-        expected_length
-    )
-    assert (
-        pendulum.angle_from_vertical_rad
-        == pytest.approx(
-            math.atan2(0.010, 0.250)
-        )
-    )
-    assert (
-        pendulum.inertia_about_support_kg_m2
-        == pytest.approx(
-            combined.inertia_pitch_at_center_kg_m2
-            + combined.mass_kg * expected_length**2
-        )
+    assert pendulum.length_m == pytest.approx(expected_length)
+    assert pendulum.angle_from_vertical_rad == pytest.approx(math.atan2(0.010, 0.250))
+    assert pendulum.inertia_about_support_kg_m2 == pytest.approx(
+        combined.inertia_pitch_at_center_kg_m2 + combined.mass_kg * expected_length**2
     )
 
 

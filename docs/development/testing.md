@@ -2,18 +2,83 @@
 
 DUK uses independent core tests and end-to-end development-environment tests. Both are required because a Python package can pass in isolation while the ROS/Docker environment is still broken.
 
-## Python core
+## Python source and numerical studies
 
-`.github/workflows/python-core.yml` installs `duk-core[test,symbolic]` directly on an Ubuntu 24.04 runner and verifies:
+The [Python workflow](../../.github/workflows/python-core.yml) installs
+`duk-core[test,research,dev]` directly on an Ubuntu 24.04 runner and verifies:
 
-- package unit tests;
+- Ruff lint/import rules and formatting for Python and notebook sources;
+- core unit tests, import-layer/cycle checks and dependency-free geometry imports;
+- ROS-independent URDF/SDF geometry adapters and developer-tool configuration tests;
 - the standalone DUK leg-kinematics example;
 - symbolic geometry agreement, Lagrange identities, inverse kinematics and
   second-order derivatives; synthetic test parameters are not robot data;
 - the standalone symbolic model with every physical template value still unknown;
-- Python source compilation.
+- Python source compilation;
+- all seven source notebooks in fresh Jupyter kernels, covering NB1–NB6.
+
+Source-notebook tests also keep execution counts and outputs out of the committed
+files. Ruff and fresh-kernel execution cover notebook syntax; unit tests do not
+duplicate compilation or search notebook source for plotting-function names.
+Geometry invariants are checked across the workspace rather than repeating a
+single-pose test or hard-coding configuration dictionaries.
+The runner checks saved Output-widget state for captured callback errors,
+which otherwise need not fail a notebook cell. Presentation regressions verify
+static initial figures, cached-case updates and timelines that end at the actual
+stop instant. The numerical regressions cover off-grid impulse timing and invalid
+sensor replay without partially updating the observer.
+Planar CoM diagnostics are checked against the second derivative of the composed
+CoM position, gravity-only flight and vertical contact-force balance. Boundary
+cases exercise both hips near both geometric limits. Held-command plots are
+checked for the correct integral over a partial last interval and for an
+instantaneous stop without invented post-stop duration.
+Controller regressions compare time-varying multi-input LQR and scalar-input MPC
+against a full quadratic objective recovered by evaluation, including motor and
+force bounds, empty force rows, zero state cost and malformed problem data.
+Contact regressions check unilateral support, friction-cone bounds and passive
+tangential power over batched 1D/2D inputs, and reject malformed rigid force inputs.
+Real two-kernel runner tests cover stdout-only execution, saved execution and a
+failure in the second kernel. They check source preservation, the original error,
+embedded provenance and archived source hashes. NB6 reference derivatives are
+compared with the admitted height path during entry, exit and capacity reduction,
+away from the piecewise-linear ramp breakpoints.
+NB3 includes a high-grip replay in the detector's negative population and reports
+class counts. NB5 fails execution if a baseline case violates its declared
+completion/lean criterion; intentionally unsuccessful NB6 stress cases still
+report their separate outcomes.
+The symmetric upper CoM angle derivatives are compared with composed mass
+properties, then exercised near both branch boundaries. A one-interval height
+study checks that a valid near-boundary posture does not fail because of an
+outside derivative probe. The shared angle primitive also recovers the exact
+speed and acceleration of prescribed rotating directions.
+Friction-observer regressions rotate the same compliant contact through axis and
+diagonal slip directions. The configured reserve must give the same inferred
+coefficient in each direction. NB6 assertions also check the friction input
+change and preserve the initial belief after later updates in the recorded trace.
 
 The workflow runs for pull requests and relevant changes pushed to `main`. This keeps the numerical package independently testable without ROS or Docker.
+
+From the repository root, run:
+
+```bash
+python -m pip install -e './robot/software/core[test,research,dev]'
+ruff check .
+ruff format --check .
+OPENBLAS_NUM_THREADS=1 python -m pytest -q -m 'not ros'
+OPENBLAS_NUM_THREADS=1 python robot/software/core/examples/run_duk_notebooks.py --output-dir data/results/duk-v3
+```
+
+The root pytest configuration supplies the core and adapter source paths. The
+`ros` marker identifies the Qt/ROS panel test; run it in the simulation container
+with `python -m pytest -q -m ros`. The simulation workflow's adapter test command
+runs both geometry and panel tests. A locally deselected ROS test does not count
+as a successful runtime check.
+
+For the architecture refactor, six spatial scenarios were replayed before and
+after changing the module structure. All 168 recorded channels matched exactly,
+including injected faults and stop times; CPU timing was excluded. The usual
+notebook assertions and physical-identity regressions remain the behavioral
+checks for subsequent changes.
 
 ## Development environment
 

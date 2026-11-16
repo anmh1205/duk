@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 
 import pytest
+
 from duk_core.modeling import load_leg_geometry_json
 
 CONFIG_PATH = (
@@ -23,16 +24,14 @@ def test_animation_builds_interactive_html_when_matplotlib_is_available() -> Non
 
     import matplotlib.pyplot as plt
     from matplotlib.patches import Circle
+
     from duk_core.visualization import (
         LegAnimationOptions,
         create_leg_animation,
     )
 
     geometry = load_leg_geometry_json(CONFIG_PATH)
-    q_values = tuple(
-        math.radians(value)
-        for value in (75.0, 80.0, 85.0)
-    )
+    q_values = tuple(math.radians(value) for value in (75.0, 80.0, 85.0))
 
     result = create_leg_animation(
         geometry,
@@ -51,10 +50,9 @@ def test_animation_builds_interactive_html_when_matplotlib_is_available() -> Non
         for local, world in zip(result.poses, result.display_poses):
             assert local.a == (0, 0)
             assert world.o[1] - geometry.wheel_radius_mm == pytest.approx(0)
-        assert [
-            pose.linkage_angle_rad
-            for pose in result.poses
-        ] == pytest.approx(q_values)
+        assert [pose.linkage_angle_rad for pose in result.poses] == pytest.approx(
+            q_values
+        )
 
         html = result.to_jshtml()
         assert "<script" in html

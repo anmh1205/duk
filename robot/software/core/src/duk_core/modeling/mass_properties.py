@@ -100,8 +100,7 @@ def equivalent_pendulum_2d(
         raise ValueError("center of mass must not coincide with the support point")
     angle = math.atan2(dx_m, dz_m)
     inertia_support = (
-        properties.inertia_pitch_at_center_kg_m2
-        + properties.mass_kg * length**2
+        properties.inertia_pitch_at_center_kg_m2 + properties.mass_kg * length**2
     )
     return EquivalentPendulum2D(
         mass_kg=properties.mass_kg,

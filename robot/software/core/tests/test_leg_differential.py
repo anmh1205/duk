@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 import pytest
+
 from duk_core.modeling import (
     KinematicSingularityError,
     UnreachableConfigurationError,
@@ -14,8 +15,30 @@ from duk_core.modeling import (
     point_acceleration,
     solve_leg_pose,
 )
+from duk_core.modeling.leg_differential import angle_derivatives
 
 GEOMETRY = Path(__file__).resolve().parents[3] / "config/physical/duk_leg_geometry.json"
+
+
+@pytest.mark.parametrize(
+    "radius,rate,acceleration", [(0.01, 0.6, -0.2), (2.0, -0.4, 0.3), (1.0, 0.0, 0.5)]
+)
+def test_angle_derivatives_recover_a_prescribed_rotating_direction(
+    radius, rate, acceleration
+):
+    angle = 0.7
+    x, y = radius * math.cos(angle), radius * math.sin(angle)
+    first = (-rate * y, rate * x)
+    second = (-acceleration * y - rate**2 * x, acceleration * x - rate**2 * y)
+    assert angle_derivatives((x, y), first, second) == pytest.approx(
+        (rate, acceleration), abs=1e-12
+    )
+
+
+@pytest.mark.parametrize("direction", [(0.0, 0.0), (math.nan, 1.0), (1.0, math.inf)])
+def test_angle_derivatives_reject_an_undefined_direction(direction):
+    with pytest.raises(ValueError, match="finite, nonzero direction"):
+        angle_derivatives(direction, (0.0, 0.0), (0.0, 0.0))
 
 
 @pytest.fixture

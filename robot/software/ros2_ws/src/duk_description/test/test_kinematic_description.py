@@ -5,6 +5,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import pytest
+
 from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
 from duk_description.kinematic_description import (
     build_kinematic_description,

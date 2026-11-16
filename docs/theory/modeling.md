@@ -166,6 +166,11 @@ $$
 J_{roll,i}=\partial x_{Oi}/\partial\eta+r_w e_{\phi_i}^T.
 $$
 
+The [2026-11-11 DUK v3 correction review](../../research/experiments/duk-v3/notion-v3-review.md)
+reconciles this canonical CCW convention with chapters 05–07: equivalent CoM
+lean is θ_G0(q)−θ, pendulum wheel spin is −φ, and pendulum total wheel torque
+is −(τ_wL+τ_wR). Mathematical +x has not been assigned to physical front/back.
+
 J_c stacks both normal rows then both rolling rows. λ=[N_L,N_R,T_L,T_R] uses
 positive upward normal force and positive rightward tangential force. For an
 explicitly selected sticking-contact mode:
@@ -241,3 +246,32 @@ the [grounded preview](../development/kinematic-bench.md) for the geometric
 constraints and frame labels. This 3D visualization placement is **not** a new
 roll dynamics model: the candidate 7-DOF dynamics above remains sagittal. Contact
 forces, impacts, tire compliance and no-slip rolling have not been established.
+
+## DUK v3 research studies
+
+The [core notebook sequence](../../robot/software/core/README.md#duk-v3-research-notebooks)
+runs the canonical equations with a versioned synthetic fixture. The 7 DOF
+projection uses the axle position and forward-positive balance angle for
+fixed-hip LQR. The spatial candidate uses world linear/angular velocity,
+the two hip rates and relative wheel rates. With a rotation matrix for
+orientation, the spatial state advances rotation by an exponential map.
+The spatial mass, bias, input and contact terms are tested against the
+sagittal model under the corresponding coordinate lift. The fixture separates
+synthetic data from the physical parameter template.
+
+Spatial velocity biases are evaluated analytically. The planar model exposes
+each body's translational/angular `Jdot v`, compiled once by
+`NumericPlanarBiped.kinematic_bias`. For body-relative position `r = R c(q)`
+and world internal velocity `u = R c_q qdot`, rigid-base transport gives
+`a_bias = omega × (omega × r) + 2 omega × u + R a_local`.
+The angular bias includes rotation of the joint axle and the linkage's angular
+curvature. Wheels use carrier curvature plus their relative spin rate.
+
+The lowest point of each tilted disk supplies both its offset `b` and geometric
+rate `bdot`. Contact bias is
+`a_wheel + alpha_wheel × b + omega_wheel × bdot`. Lean, roll and heading biases
+differentiate their angle functions and the normalized horizontal heading.
+`SpatialBiped.evaluate(state)` therefore uses the actual configuration without
+finite-difference probe poses or a `difference_step` argument. This avoids
+rejecting a valid near-boundary pose because a numerical probe leaves the
+assembly domain. The singular geometric boundary itself is still excluded.

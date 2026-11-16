@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "status": "synthetic_research_only",
+  "source": "Versioned example for model and controller tests. No identified DUK mass, motor, tire or sensor data.",
+  "planar": {
+    "g_m_s2": 9.81,
+    "c_body_x_m": 0.012,
+    "c_body_z_m": 0.025,
+    "m_body_kg": 2.42,
+    "I_body_kg_m2": 0.035,
+    "a_L_x_m": 0.0,
+    "a_L_z_m": 0.0,
+    "m_AB_L_kg": 0.16,
+    "I_AB_L_kg_m2": 0.00026,
+    "c_AB_L_u_m": 0.06,
+    "c_AB_L_n_m": 0.005,
+    "m_CD_L_kg": 0.12,
+    "I_CD_L_kg_m2": 0.00019,
+    "c_CD_L_u_m": 0.065,
+    "c_CD_L_n_m": 0.0,
+    "m_BCO_L_kg": 0.26,
+    "I_BCO_L_kg_m2": 0.0012,
+    "c_BCO_L_u_m": -0.045,
+    "c_BCO_L_n_m": 0.012,
+    "m_wheel_L_kg": 0.3,
+    "I_wheel_L_kg_m2": 0.000845,
+    "b_q_L_N_m_s": 0.0,
+    "b_w_L_N_m_s": 0.0,
+    "mu_L": 0.65,
+    "a_R_x_m": 0.0,
+    "a_R_z_m": 0.0,
+    "m_AB_R_kg": 0.16,
+    "I_AB_R_kg_m2": 0.00026,
+    "c_AB_R_u_m": 0.06,
+    "c_AB_R_n_m": 0.005,
+    "m_CD_R_kg": 0.12,
+    "I_CD_R_kg_m2": 0.00019,
+    "c_CD_R_u_m": 0.065,
+    "c_CD_R_n_m": 0.0,
+    "m_BCO_R_kg": 0.26,
+    "I_BCO_R_kg_m2": 0.0012,
+    "c_BCO_R_u_m": -0.045,
+    "c_BCO_R_n_m": 0.012,
+    "m_wheel_R_kg": 0.3,
+    "I_wheel_R_kg_m2": 0.000845,
+    "b_q_R_N_m_s": 0.0,
+    "b_w_R_N_m_s": 0.0,
+    "mu_R": 0.65
+  },
+  "hip_envelope": {
+    "stall_torque_N_m": 6.0,
+    "no_load_speed_rad_s": 7.0,
+    "efficiency": 0.85
+  },
+  "v2_balance": {
+    "wheel_mass_kg": 0.6,
+    "wheel_inertia_kg_m2": 0.00169,
+    "upper_mass_kg": 3.5,
+    "upper_inertia_kg_m2": 0.06,
+    "length_m": 0.18,
+    "radius_m": 0.075,
+    "gravity_m_s2": 9.81,
+    "sample_period_s": 0.005,
+    "total_torque_limit_N_m": 3.0,
+    "state_scales": [
+      0.2,
+      0.5,
+      0.05235987756,
+      0.5235987756
+    ],
+    "torque_scale_N_m": 1.5
+  },
+  "handbook_linear_reference": {
+    "source": "DUK v3 chapter 06 section 5, corrected 2026-11-11. Illustrative aggregate values, not identified hardware. Wheel inertia is the aggregate solid-disk value 0.5*m_w*r_w^2; rotor inertia is excluded.",
+    "wheel_mass_kg": 0.6,
+    "wheel_inertia_kg_m2": 0.0016875,
+    "upper_mass_kg": 3.5,
+    "upper_inertia_kg_m2": 0.06,
+    "length_m": 0.18,
+    "radius_m": 0.075,
+    "gravity_m_s2": 9.80665
+  },
+  "planar_contact": {
+    "stiffness": 24000.0,
+    "damping": 70.0,
+    "slip_scale": 0.01,
+    "high_friction": 0.65,
+    "low_friction": 0.08,
+    "hip_hold_kp": 38.0,
+    "hip_hold_kd": 4.0,
+    "sensor_seed": 63,
+    "slip_threshold_m_s": 0.028,
+    "acceleration_noise_m_s2": 0.025,
+    "encoder_noise_rad_s": 0.008
+  },
+  "balance_experiment": {
+    "duration_s": 2.5,
+    "slip_scale_m_s": 0.004,
+    "fall_angle_deg": 30.0,
+    "recovered_angle_deg": 2.0,
+    "recovered_speed_m_s": 0.1,
+    "initial_lean_deg": 8.0,
+    "sensor_seed": 64,
+    "acceleration_noise_m_s2": 0.02,
+    "pitch_noise_rad": 0.0008,
+    "slip_threshold_m_s": 0.03,
+    "sensitivity": {
+      "friction_belief_ratios": [
+        0.5,
+        0.8,
+        1.0,
+        1.2
+      ],
+      "actual_friction": 0.3,
+      "test_lean_deg": 10.0,
+      "delayed_samples": 3,
+      "upper_inertia_scale": 1.2,
+      "reduced_motor_bound_N_m": 2.0
+    }
+  },
+  "height_experiment": {
+    "initial_q_deg": 95.0,
+    "final_q_deg": 108.0,
+    "period_s": 0.02,
+    "duration_s": 2.3,
+    "slow_duration_s": 1.5,
+    "fast_duration_s": 0.45,
+    "initial_lean_deg": 3.0,
+    "total_wheel_limit_N_m": 3.0,
+    "friction": 0.55,
+    "mpc_horizon": 8,
+    "maximum_lean_deg": 6.0,
+    "final_lean_deg": 2.0
+  },
+  "spatial": {
+    "lateral_mounts_m": [
+      0.155,
+      -0.155
+    ],
+    "transverse_inertias_kg_m2": {
+      "body": [
+        0.029,
+        0.04
+      ],
+      "AB_L": [
+        0.00014,
+        0.00021
+      ],
+      "CD_L": [
+        0.000105,
+        0.00015
+      ],
+      "BCO_L": [
+        0.00071,
+        0.00095
+      ],
+      "wheel_L": [
+        0.00054,
+        0.00054
+      ],
+      "AB_R": [
+        0.00014,
+        0.00021
+      ],
+      "CD_R": [
+        0.000105,
+        0.00015
+      ],
+      "BCO_R": [
+        0.00071,
+        0.00095
+      ],
+      "wheel_R": [
+        0.00054,
+        0.00054
+      ]
+    }
+  },
+  "whole_body": {
+    "initial_q_deg": 95.0,
+    "hip_limits_deg": [
+      78.0,
+      125.0
+    ],
+    "period_s": 0.015,
+    "substeps": 40,
+    "contact_law": {
+      "stiffness": 22000.0,
+      "damping": 55.0,
+      "slip_scale": 0.035
+    },
+    "wheel_limit_N_m": 1.5,
+    "friction_reserve": 0.78,
+    "contact_gap_m": 0.001,
+    "slip_threshold_m_s": 0.12,
+    "spatial_slip_threshold_m_s": 0.15,
+    "minimum_force_N": 2.0,
+    "sensor_seed": 24,
+    "accel_noise_m_s2": 0.018,
+    "feature_ramp_s": 0.14,
+    "height_kp": 170.0,
+    "height_kd": 22.0,
+    "level_kp": 35.0,
+    "level_kd": 9.0,
+    "yaw_kd": 9.0,
+    "task_scales": [
+      1.0,
+      1.3,
+      1.5,
+      2.0
+    ],
+    "lookahead_s": 0.08,
+    "contact_stabilization": 7.0,
+    "deadline_s": 0.25,
+    "fallback_after": 2,
+    "recover_after": 4,
+    "fallback_roll_deg": 6.0,
+    "fallback_hip_error_deg": 8.0,
+    "fallback_hip_kp": 32.0,
+    "fallback_hip_kd": 4.0,
+    "fall_deg": 28.0,
+    "max_flight_s": 0.15,
+    "anchor_speed_gain": 1.4,
+    "anchor_yaw_gain": 2.5,
+    "anchor_speed_limit_m_s": 0.25,
+    "anchor_yaw_limit_rad_s": 0.5,
+    "anchor_tolerance_m": 0.02,
+    "maximum_lean_deg": 12.0,
+    "maximum_roll_deg": 8.0,
+    "scenario": {
+      "duration_s": 0.9,
+      "initial_lean_deg": 1.5,
+      "friction": 0.65,
+      "friction_after": 0.65,
+      "friction_change_s": 5.0,
+      "feature_start_s": 0.12,
+      "bounce_off_s": 5.0,
+      "bounce_amplitude_m": 0.009,
+      "bounce_hz": 1.4,
+      "turn_rate_rad_s": 0.1,
+      "turn_end_s": 0.36,
+      "anchor": true,
+      "reference_capacity": 1.0,
+      "hip_capacity": 1.0,
+      "impulse_at_s": 5.0,
+      "velocity_impulse_m_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fault": "none",
+      "fault_start_s": 5.0,
+      "fault_end_s": 5.0,
+      "angular_velocity_impulse_rad_s": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "heading_hold": true,
+      "drive_speed_m_s": 0.0,
+      "drive_end_s": 0.0,
+      "level_hold": true
+    },
+    "governor_gain": 2.5,
+    "governor_utilization": 0.8,
+    "cases": {
+      "nominal": {},
+      "competing": {
+        "hip_capacity": 0.5,
+        "reference_capacity": 0.6,
+        "bounce_off_s": 0.5,
+        "bounce_amplitude_m": 0.02
+      },
+      "low_grip": {
+        "friction_after": 0.13,
+        "friction_change_s": 0.36,
+        "impulse_at_s": 0.39,
+        "velocity_impulse_m_s": [
+          0.19,
+          0.03,
+          0.0
+        ]
+      },
+      "drive_release": {
+        "anchor": false,
+        "heading_hold": false,
+        "turn_rate_rad_s": 0.0,
+        "drive_speed_m_s": 0.05,
+        "drive_end_s": 0.3,
+        "level_hold": false
+      },
+      "late": {
+        "fault": "deadline",
+        "fault_start_s": 0.3,
+        "fault_end_s": 0.36
+      },
+      "brief_late": {
+        "fault": "deadline",
+        "fault_start_s": 0.3,
+        "fault_end_s": 0.315,
+        "drive_speed_m_s": 0.04,
+        "drive_end_s": 0.345
+      },
+      "infeasible": {
+        "fault": "infeasible",
+        "fault_start_s": 0.3,
+        "fault_end_s": 0.36
+      },
+      "sensor_lost": {
+        "fault": "sensor",
+        "fault_start_s": 0.3,
+        "fault_end_s": 0.36
+      },
+      "one_wheel": {
+        "impulse_at_s": 0.39,
+        "angular_velocity_impulse_rad_s": [
+          1.5,
+          0.0,
+          0.0
+        ],
+        "velocity_impulse_m_s": [
+          0.0,
+          0.0,
+          0.15
+        ]
+      },
+      "brief_flight": {
+        "impulse_at_s": 0.39,
+        "velocity_impulse_m_s": [
+          0.0,
+          0.0,
+          0.45
+        ]
+      },
+      "extended_flight": {
+        "impulse_at_s": 0.39,
+        "velocity_impulse_m_s": [
+          0.0,
+          0.0,
+          1.1
+        ]
+      },
+      "split_level": {
+        "support_levels_m": [
+          0.006,
+          -0.006
+        ],
+        "turn_rate_rad_s": 0.0,
+        "initial_lean_deg": 0.3,
+        "bounce_amplitude_m": 0.0,
+        "anchor": false,
+        "heading_hold": false
+      }
+    }
+  }
+}

@@ -119,6 +119,14 @@ leave the entire last valid state intact. Angle parameters are manual setpoints;
 read live angles from diagnostics/joint states during auto playback. Wall time
 drives this RViz-only bench; it does not require Gazebo's `/clock`.
 
+The state publisher forwards every bench joint-state sample at its original
+timestamp. Its `ignore_timestamp=true` option bypasses publication throttling;
+it does not replace the incoming timestamp. A 20 Hz timer can produce adjacent
+samples slightly less than 50 ms apart. Dropping those samples makes TF
+interpolate the cut-joint angles independently, which does not preserve the
+nonlinear loop closure. See the upstream
+[joint-state callback](https://github.com/ros/robot_state_publisher/blob/jazzy/src/robot_state_publisher.cpp).
+
 ## Verification
 
 Inside the sourced simulation environment, with the bench running:

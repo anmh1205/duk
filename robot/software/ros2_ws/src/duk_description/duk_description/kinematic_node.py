@@ -6,14 +6,15 @@ import time
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from duk_core.modeling import load_leg_geometry_json
-from duk_core.modeling.kinematic_bench import KinematicBench
 from geometry_msgs.msg import TransformStamped
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from tf2_ros import TransformBroadcaster
+
+from duk_core.modeling import load_leg_geometry_json
+from duk_core.modeling.kinematic_bench import KinematicBench
 
 from .kinematic_description import joint_positions, preview_grounding
 

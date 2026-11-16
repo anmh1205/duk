@@ -8,10 +8,11 @@ symbolic until the caller binds it. SymPy is imported only when building a model
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from .leg_linkage import LegGeometry, leg_jacobian, solve_leg_pose
 
@@ -56,14 +57,25 @@ class PlanarBipedModel:
     contact_forces: Any
 
     @cached_property
+    def body_acceleration_bias(self):
+        """Exact translational and angular Jdot v for each rigid body."""
+        return tuple(
+            (
+                self._convective(body.jacobian).as_immutable(),
+                self._convective(body.angular_jacobian).as_immutable(),
+            )
+            for body in self.bodies
+        )
+
+    @cached_property
     def velocity_bias(self):
         """Convective inertial force Σ m Jᵀ Jdot v + I jωᵀ jωdot v."""
         import sympy as sp
 
         result = sp.zeros(7, 1)
-        for body in self.bodies:
-            translation = self._convective(body.jacobian)
-            rotation = self._convective(body.angular_jacobian)
+        for body, (translation, rotation) in zip(
+            self.bodies, self.body_acceleration_bias
+        ):
             result += body.mass * body.jacobian.T * translation
             result += body.inertia * body.angular_jacobian.T * rotation
         return sp.ImmutableMatrix(result)

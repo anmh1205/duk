@@ -7,11 +7,12 @@ import time
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray
-from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
 from rcl_interfaces.srv import SetParametersAtomically
 from rclpy.parameter import Parameter
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
+
+from duk_core.modeling import load_leg_geometry_json, solve_leg_pose
 
 
 def transform_point(transform, point):

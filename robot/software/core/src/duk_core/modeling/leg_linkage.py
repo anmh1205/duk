@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 Point2 = tuple[float, float]
 Side = Literal["left", "right"]
@@ -83,9 +84,7 @@ def _normalize_angle_rad(angle_rad: float) -> float:
 
 def _validate_side(side: str, *, field_name: str) -> Side:
     if side not in ("left", "right"):
-        raise ValueError(
-            f"{field_name} must be 'left' or 'right'; got {side!r}"
-        )
+        raise ValueError(f"{field_name} must be 'left' or 'right'; got {side!r}")
     return side
 
 
@@ -116,8 +115,7 @@ class BCORigidBodyGeometry:
 
     def __post_init__(self) -> None:
         if not all(
-            math.isfinite(v) and v > 0.0
-            for v in (self.bc_mm, self.bh_mm, self.oh_mm)
+            math.isfinite(v) and v > 0.0 for v in (self.bc_mm, self.bh_mm, self.oh_mm)
         ):
             raise ValueError("BC, BH and OH must be finite and positive")
         _validate_side(
@@ -138,11 +136,7 @@ class BCORigidBodyGeometry:
 
     @property
     def signed_double_area_mm2(self) -> float:
-        return (
-            self.bc_mm
-            * _side_sign(self.o_side_of_bc)
-            * self.oh_mm
-        )
+        return self.bc_mm * _side_sign(self.o_side_of_bc) * self.oh_mm
 
     def place_from_bc(
         self,
@@ -285,9 +279,7 @@ class LegGeometry:
 
     def ab_angle_rad(self, linkage_angle_rad: float) -> float:
         """Derive absolute A->B direction from q=directed angle AB->DA."""
-        return _normalize_angle_rad(
-            self.da_angle_rad - linkage_angle_rad
-        )
+        return _normalize_angle_rad(self.da_angle_rad - linkage_angle_rad)
 
     def b_point(
         self,
@@ -331,11 +323,7 @@ class LegGeometry:
         denominator = 2.0 * self.ab_mm * self.ad_mm
 
         def q_for_bd(distance_mm: float) -> float:
-            cosine = (
-                distance_mm**2
-                - self.ab_mm**2
-                - self.ad_mm**2
-            ) / denominator
+            cosine = (distance_mm**2 - self.ab_mm**2 - self.ad_mm**2) / denominator
             cosine = max(-1.0, min(1.0, cosine))
             return math.acos(cosine)
 
@@ -434,10 +422,7 @@ def solve_leg_pose(
     min_distance = abs(geometry.cd_mm - geometry.bc_mm)
     max_distance = geometry.cd_mm + geometry.bc_mm
 
-    if (
-        distance < min_distance - tolerance_mm
-        or distance > max_distance + tolerance_mm
-    ):
+    if distance < min_distance - tolerance_mm or distance > max_distance + tolerance_mm:
         raise UnreachableConfigurationError(
             f"linkage angle has no four-bar solution: BD={distance:.6g} mm, "
             f"required [{min_distance:.6g}, {max_distance:.6g}] mm"
@@ -449,11 +434,7 @@ def solve_leg_pose(
 
     ex = _scale(1.0 / distance, bd)
     ey = _left_normal(ex)
-    along = (
-        geometry.bc_mm**2
-        - geometry.cd_mm**2
-        + distance**2
-    ) / (2.0 * distance)
+    along = (geometry.bc_mm**2 - geometry.cd_mm**2 + distance**2) / (2.0 * distance)
     height_sq = geometry.bc_mm**2 - along**2
 
     squared_tolerance = tolerance_mm * max(geometry.bc_mm, geometry.cd_mm, distance)
@@ -516,18 +497,11 @@ def leg_jacobian(
     singularity_tolerance: float = 1e-10,
 ) -> LegJacobian:
     """Return analytic d(point)/dq in canonical robot coordinates."""
-    if (
-        not math.isfinite(singularity_tolerance)
-        or singularity_tolerance <= 0.0
-    ):
-        raise ValueError(
-            "singularity_tolerance must be finite and positive"
-        )
+    if not math.isfinite(singularity_tolerance) or singularity_tolerance <= 0.0:
+        raise ValueError("singularity_tolerance must be finite and positive")
 
     # B is explicit in q, so its derivative is available directly.
-    theta_ab = geometry.ab_angle_rad(
-        pose.linkage_angle_rad
-    )
+    theta_ab = geometry.ab_angle_rad(pose.linkage_angle_rad)
 
     # theta_AB = theta_DA - q, hence d(theta_AB)/dq = -1.
     d_b = (
@@ -547,9 +521,7 @@ def leg_jacobian(
     )
 
     if abs(determinant) <= singularity_tolerance * scale:
-        raise KinematicSingularityError(
-            "four-bar loop-constraint Jacobian is singular"
-        )
+        raise KinematicSingularityError("four-bar loop-constraint Jacobian is singular")
 
     d_c = (
         rhs * r_dc[1] / determinant,
@@ -579,16 +551,12 @@ def sample_leg_trajectory(
     """Sample a continuous q sweep, including both endpoints."""
     if sample_count < 2:
         raise ValueError("sample_count must be at least 2")
-    if (
-        not math.isfinite(start_linkage_angle_rad)
-        or not math.isfinite(end_linkage_angle_rad)
+    if not math.isfinite(start_linkage_angle_rad) or not math.isfinite(
+        end_linkage_angle_rad
     ):
         raise ValueError("trajectory angle bounds must be finite")
 
-    step = (
-        end_linkage_angle_rad
-        - start_linkage_angle_rad
-    ) / (sample_count - 1)
+    step = (end_linkage_angle_rad - start_linkage_angle_rad) / (sample_count - 1)
 
     return tuple(
         solve_leg_pose(
@@ -611,13 +579,8 @@ def geometry_from_mapping(
         )
 
     units = data.get("units", {})
-    if (
-        units.get("length") != "mm"
-        or units.get("angle") != "deg"
-    ):
-        raise ValueError(
-            "leg geometry requires length='mm' and angle='deg'"
-        )
+    if units.get("length") != "mm" or units.get("angle") != "deg":
+        raise ValueError("leg geometry requires length='mm' and angle='deg'")
 
     links = data["links_mm"]
     bco = data["bco_rigid_body"]
@@ -628,8 +591,7 @@ def geometry_from_mapping(
     for key, expected in ROBOT_FRAME_CONVENTION.items():
         if robot_frame.get(key) != expected:
             raise ValueError(
-                f"robot_frame.{key} must be {expected!r}; "
-                f"got {robot_frame.get(key)!r}"
+                f"robot_frame.{key} must be {expected!r}; got {robot_frame.get(key)!r}"
             )
 
     radius = float(wheel["radius"])
@@ -640,9 +602,7 @@ def geometry_from_mapping(
         rel_tol=0.0,
         abs_tol=1e-9,
     ):
-        raise ValueError(
-            "wheel diameter must equal two times wheel radius"
-        )
+        raise ValueError("wheel diameter must equal two times wheel radius")
 
     return LegGeometry(
         ab_mm=float(links["AB"]),
@@ -658,9 +618,7 @@ def geometry_from_mapping(
             ),
         ),
         wheel_radius_mm=radius,
-        da_angle_rad=math.radians(
-            float(robot_frame["da_angle_deg"])
-        ),
+        da_angle_rad=math.radians(float(robot_frame["da_angle_deg"])),
         b_side_of_ad=_validate_side(
             str(four_bar["b_side_of_directed_ad"]),
             field_name="b_side_of_directed_ad",

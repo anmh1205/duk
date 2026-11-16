@@ -63,9 +63,7 @@ def smooth_demo_motion(
     # from singular boundaries even if the safety margin is later reduced.
     amplitude = 0.42 * (upper_rad - lower_rad)
 
-    return midpoint + amplitude * np.sin(
-        2.0 * math.pi * time_s / duration_s
-    )
+    return midpoint + amplitude * np.sin(2.0 * math.pi * time_s / duration_s)
 
 
 def main() -> None:
@@ -97,20 +95,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    geometry = load_leg_geometry_json(
-        repository_geometry_path()
-    )
-    lower, upper = (
-        geometry.geometric_linkage_angle_limits_rad()
-    )
+    geometry = load_leg_geometry_json(repository_geometry_path())
+    lower, upper = geometry.geometric_linkage_angle_limits_rad()
 
     margin = math.radians(args.margin_deg)
     safe_lower = lower + margin
     safe_upper = upper - margin
     if safe_lower >= safe_upper:
-        raise ValueError(
-            "margin is too large for the geometric workspace"
-        )
+        raise ValueError("margin is too large for the geometric workspace")
 
     q_motion = smooth_demo_motion(
         safe_lower,

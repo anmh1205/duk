@@ -37,30 +37,18 @@ def main() -> None:
     parser.add_argument("--plot", action="store_true")
     args = parser.parse_args()
 
-    geometry = load_leg_geometry_json(
-        repository_geometry_path()
-    )
+    geometry = load_leg_geometry_json(repository_geometry_path())
     q = math.radians(args.angle_deg)
     pose = solve_leg_pose(geometry, q)
     jacobian = leg_jacobian(geometry, pose)
-    lower, upper = (
-        geometry.geometric_linkage_angle_limits_rad()
-    )
+    lower, upper = geometry.geometric_linkage_angle_limits_rad()
 
     print("DUK leg geometry")
     print("  frame: canonical robot frame")
     print("  A = (0, 0) mm")
-    print(
-        "  DA direction: "
-        f"{math.degrees(geometry.da_angle_rad):+.3f} deg"
-    )
-    print(
-        "  AD direction: "
-        f"{math.degrees(geometry.ad_angle_rad):+.3f} deg"
-    )
-    print(
-        "  q definition: directed CCW angle from A->B to D->A"
-    )
+    print(f"  DA direction: {math.degrees(geometry.da_angle_rad):+.3f} deg")
+    print(f"  AD direction: {math.degrees(geometry.ad_angle_rad):+.3f} deg")
+    print("  q definition: directed CCW angle from A->B to D->A")
     print(
         "  geometric q range: "
         f"{math.degrees(lower):.3f} .. "
@@ -68,8 +56,7 @@ def main() -> None:
         "(singular boundaries, not operating limits)"
     )
     print(
-        "  derived A->B direction: "
-        f"{math.degrees(geometry.ab_angle_rad(q)):+.3f} deg"
+        f"  derived A->B direction: {math.degrees(geometry.ab_angle_rad(q)):+.3f} deg"
     )
     print(f"  BO derived: {geometry.bo_mm:.3f} mm")
     print(f"  CO derived: {geometry.co_mm:.3f} mm")
@@ -85,11 +72,7 @@ def main() -> None:
         x, y = pose.point(name)
         print(f"  {name}: ({x:.3f}, {y:.3f}) mm")
 
-    print(
-        "  dO/dq: "
-        f"({jacobian.d_o[0]:.3f}, "
-        f"{jacobian.d_o[1]:.3f}) mm/rad"
-    )
+    print(f"  dO/dq: ({jacobian.d_o[0]:.3f}, {jacobian.d_o[1]:.3f}) mm/rad")
 
     if args.plot:
         import matplotlib.pyplot as plt
@@ -112,27 +95,19 @@ def main() -> None:
         draw_leg_linkage(
             pose,
             geometry,
-        ).set_title(
-            f"DUK leg linkage — q={args.angle_deg:.1f}°"
-        )
-        draw_point_trajectories(
-            poses
-        ).set_title(
+        ).set_title(f"DUK leg linkage — q={args.angle_deg:.1f}°")
+        draw_point_trajectories(poses).set_title(
             "DUK linkage point trajectories — canonical robot frame"
         )
         plot_point_coordinates(
             poses,
             "O",
-        ).set_title(
-            "Wheel-center coordinates vs q"
-        )
+        ).set_title("Wheel-center coordinates vs q")
         plot_point_jacobian(
             geometry,
             poses,
             "O",
-        ).set_title(
-            "Wheel-center Jacobian dO/dq"
-        )
+        ).set_title("Wheel-center Jacobian dO/dq")
         plt.show()
 
 

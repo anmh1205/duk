@@ -1,6 +1,6 @@
-"""DUK reusable modeling, control, and visualization foundations.
+"""DUK modeling, control, estimation, simulation and visualization.
 
-The package now includes the established planar four-bar leg/wheel geometry and
-mass-property primitives. Dynamic/control parameters that are not yet measured
-or derived remain intentionally unspecified.
+Import individual modules for numerical studies and their optional dependencies.
+Geometry and mass-property primitives remain usable with the standard library.
+Unidentified physical values are supplied explicitly by each caller.
 """
