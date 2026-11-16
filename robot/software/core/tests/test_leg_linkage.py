@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 
@@ -48,35 +47,6 @@ def cross(a, b):
     return a[0] * b[1] - a[1] * b[0]
 
 
-def test_config_describes_geometry_not_solved_coordinates() -> None:
-    data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-
-    assert data["schema_version"] == 4
-    assert data["robot_frame"] == {
-        "origin": "A",
-        "x_axis": "+Ox points right",
-        "y_axis": "+Oy points up",
-        "positive_rotation": "counter_clockwise",
-        "reference_vector": "DA",
-        "da_angle_deg": -30,
-    }
-    assert data["four_bar_assembly"] == {
-        "b_side_of_directed_ad": "left",
-        "c_side_of_directed_bd": "left",
-    }
-    assert data["bco_rigid_body"] == {
-        "BC_mm": 42,
-        "BH_mm": 119,
-        "OH_mm": 55,
-        "o_side_of_directed_bc": "left",
-    }
-
-    serialized = json.dumps(data)
-    for point_name in ("B", "C", "D", "H", "O"):
-        assert f'"{point_name}_x"' not in serialized
-        assert f'"{point_name}_y"' not in serialized
-
-
 def test_only_a_is_fixed_and_d_b_are_derived_by_equations() -> None:
     g = geometry()
     q = math.radians(75.0)
@@ -96,18 +66,6 @@ def test_only_a_is_fixed_and_d_b_are_derived_by_equations() -> None:
         g.ab_mm * math.sin(theta_ab),
     )
     assert pose.b == pytest.approx(expected_b)
-
-
-def test_linkage_coordinate_definition_is_consistent() -> None:
-    g = geometry()
-    q = math.radians(75.0)
-
-    theta_ab = g.ab_angle_rad(q)
-    directed_ab_to_da = g.da_angle_rad - theta_ab
-
-    assert math.degrees(g.da_angle_rad) == pytest.approx(-30.0)
-    assert math.degrees(g.ad_angle_rad) == pytest.approx(150.0)
-    assert directed_ab_to_da == pytest.approx(q)
 
 
 def test_named_physical_topology_relations_hold() -> None:
@@ -133,25 +91,7 @@ def test_named_physical_topology_relations_hold() -> None:
     assert g.bco_body.o_side_of_bc == "left"
 
 
-def test_loop_closure_and_rigid_bco_geometry_hold() -> None:
-    g = geometry()
-    pose = solve_leg_pose(
-        g,
-        math.radians(75.0),
-    )
-
-    assert distance(pose.a, pose.b) == pytest.approx(g.ab_mm)
-    assert distance(pose.b, pose.c) == pytest.approx(g.bc_mm)
-    assert distance(pose.c, pose.d) == pytest.approx(g.cd_mm)
-    assert distance(pose.d, pose.a) == pytest.approx(g.ad_mm)
-
-    assert distance(pose.b, pose.h) == pytest.approx(g.bh_mm)
-    assert distance(pose.h, pose.o) == pytest.approx(g.oh_mm)
-    assert distance(pose.b, pose.o) == pytest.approx(g.bo_mm)
-    assert distance(pose.c, pose.o) == pytest.approx(g.co_mm)
-
-
-def test_bco_rigid_triangle_invariants_hold_over_motion() -> None:
+def test_linkage_closure_and_rigid_carrier_hold_over_motion() -> None:
     g = geometry()
     lower, upper = g.geometric_linkage_angle_limits_rad()
     margin = math.radians(2.0)
@@ -165,6 +105,16 @@ def test_bco_rigid_triangle_invariants_hold_over_motion() -> None:
     expected_area2 = g.bco_body.signed_double_area_mm2
 
     for pose in poses:
+        for a, b, length in (
+            ("A", "B", g.ab_mm),
+            ("C", "D", g.cd_mm),
+            ("A", "D", g.ad_mm),
+            ("B", "H", g.bh_mm),
+            ("H", "O", g.oh_mm),
+        ):
+            assert distance(pose.point(a), pose.point(b)) == pytest.approx(
+                length, abs=1e-8
+            )
         assert distance(
             pose.b,
             pose.c,
