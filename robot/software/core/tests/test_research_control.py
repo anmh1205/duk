@@ -74,6 +74,52 @@ def test_slip_gate_does_not_absorb_a_spinning_wheel():
     assert recovered.odometry_accepted and not recovered.slip_detected
 
 
+@pytest.mark.parametrize("count", [1.5, np.nan, np.inf, 0, -1])
+def test_slip_confirmation_requires_a_positive_sample_count(count):
+    with pytest.raises(ValueError, match="confirmation count"):
+        SlipGatedVelocity(0.0, 0.05, count, 0.2)
+
+
+@pytest.mark.parametrize(
+    ("times", "acceleration", "wheel", "contact"),
+    [
+        ([np.nan], [0], [0], [True]),
+        ([0, 0], [0, 0], [0, 0], [True, True]),
+        ([1, 0], [0, 0], [0, 0], [True, True]),
+        ([0, 1, 2], [0, 1, np.nan], [0, 0, 0], [True] * 3),
+        ([0, 1], [0, 0], [np.inf, 0], [True, True]),
+        ([0, 1], [0, 0], [0, 0], [True, np.nan]),
+    ],
+)
+def test_invalid_sensor_replay_is_rejected_before_updating_observer(
+    times, acceleration, wheel, contact
+):
+    from duk_core.estimation.sagittal import replay_velocity
+
+    observer = SlipGatedVelocity(0.3, 0.05, 2, 0.2)
+    with pytest.raises(ValueError, match="finite signals"):
+        replay_velocity(times, acceleration, wheel, contact, observer)
+    assert observer.speed == 0.3
+
+
+def test_velocity_replay_integrates_irregular_intervals_and_marks_initial_prior():
+    from duk_core.estimation.sagittal import replay_velocity
+
+    # Constant independent acceleration has an exact integral even on this grid.
+    times = np.array([0.0, 0.1, 0.15, 0.4])
+    truth = 0.3 + 2 * times
+    records = replay_velocity(
+        times,
+        np.full(4, 2.0),
+        truth,
+        np.ones(4, dtype=bool),
+        SlipGatedVelocity(0.3, 0.05, 2, 0.2),
+    )
+    np.testing.assert_allclose([record.speed for record in records], truth)
+    assert not records[0].odometry_accepted
+    assert all(record.odometry_accepted for record in records[1:])
+
+
 def test_toggle_exit_retracts_actual_contribution_and_stop_latches():
     feature = FeatureTransition()
     for _ in range(10):
@@ -85,6 +131,7 @@ def test_toggle_exit_retracts_actual_contribution_and_stop_latches():
     assert feature.status == "Enter"
     assert feature.step(True, False, 1.0, 0.01, 0.1) == 0.0
     assert feature.status == "Paused"
+    assert feature.rate == 0.0
     supervisor = Supervisor(2, 3)
     flags = dict(sensor_valid=True, supported=True, fallback_valid=True, fall=False)
     assert supervisor.step("deadline", **flags) == "reduced"
@@ -96,6 +143,55 @@ def test_toggle_exit_retracts_actual_contribution_and_stop_latches():
     ]
     assert supervisor.step("solved", **(flags | {"sensor_valid": False})) == "stop"
     assert supervisor.step("solved", **flags) == "stop"
+
+
+@pytest.mark.parametrize(
+    "center,capacity_change",
+    [(0.15, None), (0.40, None), (0.31, 0.28)],
+    ids=["enter", "exit", "capacity-reduction"],
+)
+def test_height_reference_derivatives_follow_the_admitted_height(
+    research_inputs, center, capacity_change
+):
+    from types import SimpleNamespace
+
+    from duk_core.simulation._whole_body_tasks import ReferencePolicy
+
+    # Compare derivatives with the actual height path, independently of its
+    # product-rule implementation. Samples lie inside each linear ramp segment.
+    dt = 0.001
+    settings = research_inputs["whole_body"] | {"period_s": dt}
+    scenario = settings["scenario"] | {"feature_start_s": 0.10, "bounce_off_s": 0.35}
+    policy = ReferencePolicy(settings, scenario, 0.4)
+    state = SimpleNamespace(position=np.zeros(3))
+    terms = SimpleNamespace(kinematics=SimpleNamespace(tasks=np.zeros(4)))
+    observation = SimpleNamespace(modes=("rolling", "rolling"))
+    samples = []
+    middle = round(center / dt)
+    for tick in range(middle + 2):
+        time = tick * dt
+        if capacity_change is not None and time >= capacity_change:
+            scenario["reference_capacity"] = 0.4
+        reference = policy.update(
+            state,
+            terms,
+            observation,
+            time,
+            supervisor_mode="normal",
+            sensor_valid=True,
+            fallen=False,
+            previous_usage=0.0,
+        )
+        if tick >= middle - 1:
+            samples.append(reference)
+    previous, current, following = samples
+    heights = [sample.effective[0] for sample in samples]
+    assert current.height_rate == pytest.approx(
+        (heights[2] - heights[0]) / (2 * dt), abs=1e-5
+    )
+    assert current.height_acceleration == pytest.approx(
+        (heights[2] - 2 * heights[1] + heights[0]) / dt**2, abs=1e-4
+    )
 
 
 def test_projection_cannot_bypass_motor_limits_with_a_wide_interval():
@@ -205,6 +301,21 @@ def test_finite_slip_obeys_motor_power_and_friction_dissipation(seed):
     assert energy_rate == pytest.approx(
         torque * (spin_rate - rate) + response.tangent * slip, abs=1e-11
     )
+
+
+@pytest.mark.parametrize(
+    "friction,scale",
+    [(-0.1, 0.01), (np.nan, 0.01), (0.5, 0.0), (0.5, -0.01), (0.5, np.inf)],
+)
+def test_pendulum_friction_cannot_be_active_or_undefined(
+    research_inputs, friction, scale
+):
+    data = research_inputs["v2_balance"]
+    model = WheeledPendulum(
+        **{name: data[name] for name in WheeledPendulum.__dataclass_fields__}
+    )
+    with pytest.raises(ValueError, match="Slip law requires"):
+        model.finite_slip(0.1, 0.0, 0.0, 0.2, friction, scale)
 
 
 @pytest.mark.parametrize("horizon", [1, 5])

@@ -69,7 +69,7 @@ class ContactObserver:
         )
         valid_force = sliding & (previous_force[:, 2] > p["minimum_force_N"])
         ratios = (
-            np.sum(abs(previous_force[valid_force, :2]), axis=1)
+            np.linalg.norm(previous_force[valid_force, :2], axis=1)
             / previous_force[valid_force, 2]
         )
         self.friction_belief[valid_force] = np.minimum(

@@ -55,6 +55,8 @@ class WholeBodyTrace:
     terminal_time: float
     terminal_pose: np.ndarray  # NaN if a travel violation leaves the linkage domain.
     peak_abs_lean_roll: np.ndarray
+    friction_belief: np.ndarray
+    actual_friction: np.ndarray  # Synthetic plant input, not a measured channel.
 
 
 def _allocate_sample(
@@ -117,6 +119,9 @@ def run_whole_body(
     Sensor inputs are simulated. The independent velocity channel represents
     already-compensated axle acceleration and pose is supplied by the simulator.
     The supervisor and its zero-command stop are policies for this study.
+    An impulse is delivered at the first command sample at or after its requested
+    time, like the sampled friction and fault changes. No impulse is delivered
+    after the last command sample, including at the terminal horizon.
     """
     if priority not in {"balance_first", "legs_first"}:
         raise ValueError("Unknown task priority")
@@ -135,6 +140,22 @@ def run_whole_body(
             "Expected positive simulation times and an integer substep count"
         )
     times, ends = sample_intervals(duration, period)
+    impulse_time = scenario["impulse_at_s"]
+    linear_impulse = np.asarray(scenario["velocity_impulse_m_s"], dtype=float)
+    angular_impulse = np.asarray(
+        scenario["angular_velocity_impulse_rad_s"], dtype=float
+    )
+    if (
+        not np.isfinite(impulse_time)
+        or impulse_time < 0
+        or linear_impulse.shape != (3,)
+        or angular_impulse.shape != (3,)
+        or not np.isfinite(np.r_[linear_impulse, angular_impulse]).all()
+    ):
+        raise ValueError(
+            "Expected a finite nonnegative impulse time and two finite 3-vectors"
+        )
+    impulse_tick = np.searchsorted(times, impulse_time)
     setup = initialize(model, weights, settings, scenario)
     state = setup.state
     observer = ContactObserver(settings, scenario)
@@ -151,10 +172,10 @@ def run_whole_body(
     rows, labels = [], []
 
     for tick, (time, end) in enumerate(zip(times, ends)):
-        if tick == round(scenario["impulse_at_s"] / period):
+        if tick == impulse_tick:
             velocity = state.velocity.copy()
-            velocity[:3] += scenario["velocity_impulse_m_s"]
-            velocity[3:6] += scenario["angular_velocity_impulse_rad_s"]
+            velocity[:3] += linear_impulse
+            velocity[3:6] += angular_impulse
             state = SpatialState(state.position, state.rotation, state.joints, velocity)
         fault = scenario["fault_start_s"] <= time < scenario["fault_end_s"]
         friction = np.full(
@@ -244,6 +265,8 @@ def run_whole_body(
                 effort_limit=effort_bounds,
                 force=previous_force.copy(),
                 allocated_force=command.allocated_force,
+                friction_belief=observer.friction_belief.copy(),
+                actual_friction=friction.copy(),
                 feature_amount=targets.amounts,
                 feature_intent=targets.intents,
                 true_and_estimated_speed=(

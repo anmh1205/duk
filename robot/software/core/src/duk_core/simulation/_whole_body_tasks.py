@@ -14,6 +14,8 @@ class References:
     """Height (m), yaw rate (rad/s), speed (m/s) and optional-task participation.
 
     Feature order is bounce, level, anchor and heading throughout the study.
+    Height derivatives include the participation ramp between its breakpoints;
+    the existing piecewise-linear policy is not an acceleration-smooth envelope.
     """
 
     requested: tuple[float, float, float]
@@ -94,9 +96,11 @@ class ReferencePolicy:
         phase = 2 * np.pi * c["bounce_hz"] * max(0.0, t - c["feature_start_s"])
         omega = 2 * np.pi * c["bounce_hz"]
         wave = c["bounce_amplitude_m"] * np.sin(phase)
+        wave_rate = c["bounce_amplitude_m"] * omega * np.cos(phase)
+        amount_rate = self.features[0].rate
         h_ref = home + amounts[0] * wave
-        h_rate = amounts[0] * c["bounce_amplitude_m"] * omega * np.cos(phase)
-        h_acc = -amounts[0] * omega**2 * wave
+        h_rate = amounts[0] * wave_rate + amount_rate * wave
+        h_acc = -amounts[0] * omega**2 * wave + 2 * amount_rate * wave_rate
         requested_yaw_rate = c["turn_rate_rad_s"] if t < c["turn_end_s"] else 0.0
         requested_speed = c["drive_speed_m_s"] if t < c["drive_end_s"] else 0.0
         speed_ref, yaw_rate_ref = (
@@ -143,6 +147,7 @@ class ReferencePolicy:
     def pause(self, references: References) -> None:
         p = self.settings
         references.effective = (np.nan, 0.0, 0.0)
+        references.height_rate = references.height_acceleration = 0.0
         references.capacity_reason = "supervisor"
         references.amounts = [
             feature.step(enabled, False, 0.0, p["period_s"], p["feature_ramp_s"])

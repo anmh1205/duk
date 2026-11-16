@@ -11,6 +11,51 @@ from duk_core.modeling.planar_numeric import NumericPlanarBiped
 from duk_core.modeling.spatial_biped import SpatialBiped
 
 
+@pytest.mark.parametrize("angle", [0.0, np.pi / 4, np.pi / 2])
+def test_observed_friction_is_rotation_invariant_and_conservative(
+    research_inputs, angle
+):
+    from types import SimpleNamespace
+
+    from duk_core.modeling.contact_dynamics import CompliantContact
+    from duk_core.simulation._whole_body_state import ContactObserver
+
+    settings = research_inputs["whole_body"]
+    true_friction = settings["cases"]["low_grip"]["friction_after"]
+    law = CompliantContact(**settings["contact_law"])
+    normal = 10 * settings["minimum_force_N"]
+    speed = 2 * settings["spatial_slip_threshold_m_s"]
+    direction = np.array([np.cos(angle), np.sin(angle)])
+    normal_force, tangent_force = law.forces(
+        np.full(2, -normal / law.stiffness),
+        np.zeros(2),
+        np.tile(speed * direction, (2, 1)),
+        true_friction,
+    )
+    force = np.column_stack((tangent_force, normal_force))
+    rows = np.broadcast_to(np.eye(3, 10), (2, 3, 10))
+    kinematics = SimpleNamespace(
+        task_jacobian=np.zeros((4, 10)),
+        contact=rows,
+        gaps=np.zeros(2),
+        forward=np.r_[direction, 0.0],
+        linear=rows,
+        tasks=np.zeros(4),
+    )
+    model = SimpleNamespace(wheels=[0, 1], rolling_odometry=lambda *_: np.zeros(2))
+    state = SimpleNamespace(velocity=np.r_[speed * direction, np.zeros(8)])
+    observer = ContactObserver(settings, settings["scenario"])
+    observation = observer.observe(
+        model, state, SimpleNamespace(kinematics=kinematics), force, 0
+    )
+    assert observation.modes == ("sliding", "sliding")
+    assert np.all(observer.friction_belief <= true_friction)
+    expected = (
+        settings["friction_reserve"] * true_friction * np.tanh(speed / law.slip_scale)
+    )
+    np.testing.assert_allclose(observer.friction_belief, expected, atol=1e-12, rtol=0)
+
+
 @pytest.fixture(scope="module")
 def spatial(geometry_path, research_inputs):
     data = research_inputs
@@ -44,6 +89,14 @@ def test_spatial_sagittal_projection(spatial):
         lift.T @ (model.bias + model.mass @ drift), planar.bias, atol=1e-8
     )
     assert np.linalg.eigvalsh(model.mass)[0] > 0
+
+
+@pytest.mark.parametrize("angles,rank", [((95, 95), 5), ((90, 110), 6)])
+def test_full_rolling_rank_is_conditional_on_axle_alignment(spatial, angles, rank):
+    q = np.r_[0.0, 0.4, 0.0, np.deg2rad(angles), 0.0, 0.0]
+    state, _ = spatial.sagittal_state(q, np.zeros(7))
+    rows = spatial.kinematics(state).contact.reshape(6, 10)
+    assert np.linalg.matrix_rank(rows) == rank
 
 
 def test_spatial_task_rates_match_finite_differences(spatial):
@@ -272,6 +325,53 @@ def test_hip_bounds_exclude_an_interior_overshoot(spatial, direction):
     angles = joints[0] + velocity[6] * times + 0.5 * braking * times**2
     assert angles.min() >= 1.4 - 1e-12
     assert angles.max() <= 2.0 + 1e-12
+
+
+@pytest.mark.parametrize("impulse_time", [0.0, 0.001, 0.007, 0.015, 0.016, 0.044, 0.05])
+def test_sampled_impulse_never_arrives_early_or_more_than_once(
+    spatial, research_inputs, monkeypatch, impulse_time
+):
+    from duk_core.modeling.hip_load import LinearTorqueSpeed
+    from duk_core.simulation.whole_body import run_whole_body
+
+    data = research_inputs
+    settings = data["whole_body"] | {"substeps": 1}
+    scenario = settings["scenario"] | {
+        "duration_s": 0.05,
+        "initial_lean_deg": 0.0,
+        "fault": "deadline",
+        "fault_start_s": 0.0,
+        "fault_end_s": 1.0,
+        "impulse_at_s": impulse_time,
+        "velocity_impulse_m_s": [0.04, 0.0, 0.0],
+    }
+    # Freeze integration so the only change in axle speed is the scheduled impulse.
+    monkeypatch.setattr(
+        spatial,
+        "compliant_step",
+        lambda state, *_: (state, np.array([[0.0, 0.0, 20.0]] * 2)),
+    )
+    envelope = data["hip_envelope"]
+    trace = run_whole_body(
+        spatial,
+        LinearTorqueSpeed(
+            envelope["stall_torque_N_m"],
+            envelope["no_load_speed_rad_s"],
+            envelope["efficiency"],
+        ),
+        data["v2_balance"],
+        settings,
+        scenario,
+        method="weighted",
+        priority="balance_first",
+    )
+    assert trace.stop_reason is None
+    np.testing.assert_allclose(trace.time, [0.0, 0.015, 0.03, 0.045])
+    np.testing.assert_allclose(
+        trace.true_and_estimated_speed[:, 0],
+        np.where(trace.time >= impulse_time, 0.04, 0.0),
+        atol=1e-12,
+    )
 
 
 @pytest.mark.parametrize("event", ["fall", "hip_travel"])

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 
 def absolute_wheel_rate(relative_rate, body_rate, carrier_rate):
@@ -45,10 +46,14 @@ class SlipGatedVelocity:
         threshold: float,
         confirmation_samples: int,
         correction: float,
-    ):
+    ) -> None:
         if not np.isfinite([speed, threshold, correction]).all() or threshold <= 0:
             raise ValueError("Invalid initial speed or slip threshold")
-        if confirmation_samples < 1 or not 0 <= correction <= 1:
+        if (
+            not isinstance(confirmation_samples, (int, np.integer))
+            or confirmation_samples < 1
+            or not 0 <= correction <= 1
+        ):
             raise ValueError("Invalid confirmation count or wheel correction")
         self.speed = speed
         self.threshold = threshold
@@ -81,12 +86,22 @@ class SlipGatedVelocity:
 
 
 def replay_velocity(
-    times, independent_acceleration, wheel_surface_speed, in_contact, observer
-):
-    """Replay synchronized signals. Index zero records the initial estimate."""
-    times, accel, wheel, contact = map(
-        np.asarray, (times, independent_acceleration, wheel_surface_speed, in_contact)
+    times: ArrayLike,
+    independent_acceleration: ArrayLike,
+    wheel_surface_speed: ArrayLike,
+    in_contact: ArrayLike,
+    observer: SlipGatedVelocity,
+) -> list[VelocityEstimate]:
+    """Replay synchronized signals, validating the full record before mutation.
+
+    Index zero records the initial estimate, without applying a correction.
+    Acceleration at index i predicts over (times[i-1], times[i]].
+    """
+    times, accel, wheel = (
+        np.asarray(channel, dtype=float)
+        for channel in (times, independent_acceleration, wheel_surface_speed)
     )
+    contact = np.asarray(in_contact)
     if (
         times.ndim != 1
         or not times.size
@@ -95,10 +110,16 @@ def replay_velocity(
         raise ValueError(
             "Replay requires equally sized, nonempty time and sensor channels"
         )
-    records = [
-        VelocityEstimate(
-            observer.speed, observer.speed - wheel[0], bool(contact[0]), False
+    if (
+        not all(np.isfinite(channel).all() for channel in (times, accel, wheel))
+        or np.any(np.diff(times) <= 0)
+        or not np.isin(contact, (False, True)).all()
+    ):
+        raise ValueError(
+            "Replay requires finite signals, increasing times and boolean contact flags"
         )
+    records = [
+        VelocityEstimate(observer.speed, observer.speed - wheel[0], False, False)
     ]
     for i, dt in enumerate(np.diff(times), start=1):
         records.append(
@@ -116,7 +137,13 @@ def ideal_planar_contact_estimate(
     gravity,
     com_vertical_acceleration,
 ):
-    """Use wheel spin balance and total vertical force, assuming negligible axle losses."""
+    """Reconstruct world +x traction and total normal force without axle losses.
+
+    Wheel torque and absolute spin acceleration must BOTH be canonical CCW
+    quantities (chapter 04). For the +x pendulum convention of chapters 05–07,
+    negate both before calling; the equivalent formula there is (tau - I*alpha)/r.
+    Relative encoder acceleration requires body/carrier compensation first.
+    """
     tangential = (spin_inertia * spin_acceleration - wheel_torque_ccw) / radius
     normal_total = total_mass * (gravity + com_vertical_acceleration)
     return tangential, normal_total

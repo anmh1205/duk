@@ -9,8 +9,15 @@ import numpy as np
 
 @dataclass
 class FeatureTransition:
+    """Piecewise-linear participation; rate is the right derivative at each tick.
+
+    Rates can jump when a ramp starts, reaches its target or is paused. This
+    policy does not represent an impulsive acceleration at those breakpoints.
+    """
+
     amount: float = 0.0
     status: str = "Idle"
+    rate: float = 0.0
 
     def step(self, enabled, available, capacity, dt, ramp_time):
         if (
@@ -21,11 +28,16 @@ class FeatureTransition:
             raise ValueError("Invalid feature capacity or transition interval")
         if not available:
             self.amount = 0.0
+            self.rate = 0.0
             self.status = "Paused" if enabled else "Idle"
             return self.amount
         target = capacity if enabled else 0.0
-        self.amount += float(
-            np.clip(target - self.amount, -dt / ramp_time, dt / ramp_time)
+        remaining = target - self.amount
+        self.amount += float(np.clip(remaining, -dt / ramp_time, dt / ramp_time))
+        self.rate = (
+            float(np.sign(remaining) / ramp_time)
+            if abs(remaining) > dt / ramp_time
+            else 0.0
         )
         if not enabled:
             self.status = "Exit" if self.amount > 1e-10 else "Idle"
