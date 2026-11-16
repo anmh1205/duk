@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from .planar_numeric import PlanarDynamics
 
@@ -27,11 +28,50 @@ class CompliantContact:
                 "Contact requires positive stiffness/slip scale and nonnegative damping"
             )
 
-    def forces(self, gaps, normal_speed, tangential_speed, friction):
-        """Return normal and tangential forces. The final tangent axis may be 1D or 2D."""
-        gaps = np.asarray(gaps)
-        tangent = np.asarray(tangential_speed)
-        speed = np.linalg.norm(tangent, axis=-1)
+    def forces(
+        self,
+        gaps: ArrayLike,
+        normal_speed: ArrayLike,
+        tangential_speed: ArrayLike,
+        friction: ArrayLike,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return unilateral, dissipative forces for finite contact measurements.
+
+        Contact dimensions broadcast; the last tangent axis has one or two
+        components. Friction is finite and nonnegative. Inputs are in SI.
+        """
+        gaps, normal_speed, tangent, friction = (
+            np.asarray(value, dtype=float)
+            for value in (gaps, normal_speed, tangential_speed, friction)
+        )
+        if (
+            tangent.ndim < 1
+            or tangent.shape[-1] not in (1, 2)
+            or not all(
+                np.isfinite(value).all()
+                for value in (gaps, normal_speed, tangent, friction)
+            )
+            or np.any(friction < 0)
+        ):
+            raise ValueError(
+                "Contact requires finite measurements, nonnegative friction and 1D/2D tangents"
+            )
+        try:
+            shape = np.broadcast_shapes(
+                gaps.shape, normal_speed.shape, tangent.shape[:-1], friction.shape
+            )
+            gaps, normal_speed, friction = (
+                np.broadcast_to(value, shape)
+                for value in (gaps, normal_speed, friction)
+            )
+            tangent = np.broadcast_to(tangent, (*shape, tangent.shape[-1]))
+        except ValueError as exc:
+            raise ValueError("Contact measurement dimensions must broadcast") from exc
+        speed = (
+            np.abs(tangent[..., 0])
+            if tangent.shape[-1] == 1
+            else np.hypot(tangent[..., 0], tangent[..., 1])
+        )
         normal = np.where(
             gaps <= 0,
             np.maximum(0, -self.stiffness * gaps - self.damping * normal_speed),
@@ -69,13 +109,29 @@ def constrained_acceleration(mass, rhs, jacobian, target):
 
 def rigid_rolling(
     dynamics: PlanarDynamics,
-    effort,
-    friction,
+    effort: ArrayLike,
+    friction: ArrayLike,
     *,
     active=(True, True),
-    tolerance=1e-9,
+    tolerance: float = 1e-9,
 ) -> PlanarContactResult:
-    """Solve a selected rolling mode and report unilateral/friction feasibility."""
+    """Solve a selected mode with scalar/per-wheel nonnegative finite friction.
+
+    Invalid force inputs raise ValueError; valid inputs can yield an inadmissible
+    rigid mode. A zero feasibility tolerance is supported.
+    """
+    effort = np.asarray(effort, dtype=float)
+    friction = np.asarray(friction, dtype=float)
+    if effort.shape != (dynamics.input.shape[1],) or not np.isfinite(effort).all():
+        raise ValueError("Effort must contain one finite value per input")
+    if (
+        friction.shape not in ((), (2,))
+        or not np.isfinite(friction).all()
+        or np.any(friction < 0)
+    ):
+        raise ValueError("Friction must be finite and nonnegative, scalar or per wheel")
+    if not np.isfinite(tolerance) or tolerance < 0:
+        raise ValueError("Force tolerance must be finite and nonnegative")
     active = np.asarray(active, dtype=bool)
     if active.shape != (2,):
         raise ValueError("Specify active contact for each wheel")
