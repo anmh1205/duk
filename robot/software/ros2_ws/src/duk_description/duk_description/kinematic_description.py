@@ -24,10 +24,10 @@ def preview_grounding(geometry, left_pose, right_pose):
     )
 
 
-def joint_positions(geometry, left_q, right_q):
+def joint_positions(geometry, left_q, right_q, *, wheel_spin_relative=None):
     """All four relative URDF angles per side, from two independent leg q's."""
     joints = {}
-    for side, q in (("left", left_q), ("right", right_q)):
+    for index, (side, q) in enumerate((("left", left_q), ("right", right_q))):
         pose = solve_leg_pose(geometry, q)
         ab = math.atan2(pose.b[1], pose.b[0])
         carrier = math.atan2(pose.c[1] - pose.b[1], pose.c[0] - pose.b[0])
@@ -38,18 +38,20 @@ def joint_positions(geometry, left_q, right_q):
                 side + "_carrier_relative": carrier - ab,
                 side + "_cd_angle": dc,
                 # Absolute wheel angle is held at zero; rolling is not imposed.
-                side + "_wheel_relative": -carrier,
+                side + "_wheel_relative": -carrier
+                if wheel_spin_relative is None
+                else wheel_spin_relative[index],
             }
         )
     return joints
 
 
-def build_kinematic_description(geometry_path):
+def build_kinematic_description(geometry_path, *, mounts_xyz_m=None):
     """Reuse preview visuals, converting their origins into moving link frames."""
     geometry = load_leg_geometry_json(geometry_path)
     reference_q = math.radians(75)
     pose = solve_leg_pose(geometry, reference_q)
-    urdf, _, metadata = build_preview(geometry_path, 75)
+    urdf, _, metadata = build_preview(geometry_path, 75, mounts_xyz_m=mounts_xyz_m)
     robot = ET.fromstring(urdf)
     robot.set("name", "duk_kinematic_bench")
     # robot_state_publisher owns the internal tree; the bench broadcasts the
@@ -70,11 +72,10 @@ def build_kinematic_description(geometry_path):
         # CCW in (x,z) is rotation about negative ROS y.
         ET.SubElement(joint, "axis", xyz="0 -1 0")
 
-    half_spacing = metadata["leg_plane_spacing_m"] / 2
-    for side, y in (("left", half_spacing), ("right", -half_spacing)):
+    for side, (mx, y, mz) in zip(("left", "right"), metadata["leg_mounts_xyz_m"]):
         ab_frame, cd_frame = side + "_ab_frame", side + "_cd_frame"
         carrier_frame, wheel_frame = side + "_carrier_frame", side + "_wheel_frame"
-        moving_joint(side + "_ab_angle", "base_link", ab_frame, (0, y, 0))
+        moving_joint(side + "_ab_angle", "base_link", ab_frame, (mx, y, mz))
         moving_joint(
             side + "_carrier_relative",
             ab_frame,
@@ -85,7 +86,7 @@ def build_kinematic_description(geometry_path):
             side + "_cd_angle",
             "base_link",
             cd_frame,
-            (pose.d[0] / 1000, y, pose.d[1] / 1000),
+            (mx + pose.d[0] / 1000, y, mz + pose.d[1] / 1000),
         )
         sign = 1 if geometry.bco_body.o_side_of_bc == "left" else -1
         moving_joint(
@@ -113,7 +114,7 @@ def build_kinematic_description(geometry_path):
             origin = visual.find("origin")
             x, py, z = map(float, origin.get("xyz").split())
             roll, pitch, yaw = map(float, origin.get("rpy").split())
-            dx, dz = x - anchor[0] / 1000, z - anchor[1] / 1000
+            dx, dz = x - mx - anchor[0] / 1000, z - mz - anchor[1] / 1000
             origin.set(
                 "xyz",
                 numbers(
