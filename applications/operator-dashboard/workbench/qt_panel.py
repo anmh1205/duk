@@ -133,9 +133,11 @@ SIGNAL_LABELS = {
     "hip_static_effort": "Mô-men hông tĩnh",
     "hip_limit": "Mô-men hông cho phép",
     "hip_requested": "Mô-men hông yêu cầu",
+    "hip_preceding_effort": "Mô-men hông giữ ở bước trước",
     "wheel_applied": "Mô-men bánh áp dụng",
     "wheel_requested": "Mô-men bánh yêu cầu",
     "wheel_limit": "Mô-men bánh cho phép",
+    "wheel_preceding_effort": "Mô-men bánh giữ ở bước trước",
     "command_source": "Nguồn lệnh",
     "supervisor": "Giám sát",
 }

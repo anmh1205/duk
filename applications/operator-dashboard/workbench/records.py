@@ -159,5 +159,5 @@ def transitions(times: list[float], states: list, name: str) -> list[dict[str, A
     return [
         event(f"{name} · {mode}", None, time)
         for time, previous, mode in zip(times[1:], states, states[1:])
-        if mode != previous
+        if mode is not None and mode != previous
     ]

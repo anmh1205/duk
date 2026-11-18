@@ -264,7 +264,15 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
             trace.friction_belief[:, index],
             held=True,
         )
-        add(side + "_contact_mode", "1", wheel, [m[index] for m in trace.contact_modes])
+        add(
+            side + "_contact_mode",
+            "1",
+            wheel,
+            [m[index] for m in trace.contact_modes],
+            trace.terminal_contact_modes[index]
+            if trace.terminal_contact_modes
+            else None,
+        )
         for actuator, offset, scope in (("hip", 0, hip), ("wheel", 2, wheel)):
             for label, data in (
                 ("requested", trace.requested_effort),
@@ -278,6 +286,16 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
                     data[:, index + offset],
                     held=True,
                 )
+            channel = index + offset
+            add(
+                f"{side}_{actuator}_preceding_effort",
+                "N·m",
+                scope,
+                [None, *trace.applied_effort[:-1, channel]],
+                trace.terminal_integrated_effort[channel]
+                if trace.terminal_integrated_effort is not None
+                else None,
+            )
 
     for name, data, unit in (
         ("solver_status", trace.solver_status, "1"),
@@ -309,11 +327,11 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
         when = config["fault_start_s"]
         active = next((t for t in times if when <= t < config["fault_end_s"]), None)
         events.append(event(f"Lỗi · {config['fault']}", when, active))
-    for side, name in zip(SIDES, ("Bánh trái", "Bánh phải")):
-        events += transitions(times, signals[side + "_contact_mode"].values, name)
     events += transitions(times, list(trace.command_source), "Lệnh")
     if append_end:
         times.append(float(trace.terminal_time))
+    for side, name in zip(SIDES, ("Bánh trái", "Bánh phải")):
+        events += transitions(times, signals[side + "_contact_mode"].values, name)
     signals.update(linkage_signals(inputs, signals))
     outcome = trace.stop_reason or "completed"
     events.append(event(outcome, None, times[-1]))

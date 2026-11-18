@@ -20,7 +20,7 @@ from ..modeling.spatial_biped import SpatialBiped, SpatialState
 from ._sampled import sample_intervals
 from ._whole_body_command import CommandPolicy
 from ._whole_body_setup import initialize
-from ._whole_body_state import ContactObserver, PlantGuard
+from ._whole_body_state import ContactObserver, PlantGuard, contact_modes
 from ._whole_body_tasks import ReferencePolicy, build_tasks
 
 
@@ -69,6 +69,8 @@ class WholeBodyTrace:
     sensor_valid: np.ndarray
     terminal_state: SpatialState
     terminal_force: np.ndarray
+    terminal_contact_modes: tuple[str, str] | None
+    terminal_integrated_effort: np.ndarray | None
     task_names: tuple[tuple[str, ...], ...]
     task_targets: np.ndarray
     task_scales: np.ndarray
@@ -215,6 +217,7 @@ def run_whole_body(
     guard = PlantGuard(settings)
     previous_force = np.array([[0.0, 0.0, setup.normal_at_rest]] * 2)
     warm_start, previous_usage = None, 0.0
+    integrated_effort = None
     rows, labels = [], []
 
     for tick, (time, end) in enumerate(zip(times, ends)):
@@ -365,8 +368,23 @@ def run_whole_body(
             end,
             duration,
         )
+        integrated_effort = command.applied
         if guard.stop_reason is not None:
             break
+
+    terminal_modes = None
+    if guard.terminal_time == rows[-1]["time"]:
+        terminal_modes = labels[-1]["contact_modes"]
+    elif np.isfinite(guard.terminal_pose).all():
+        current = model.kinematics(state)
+        supported = (current.gaps <= settings["contact_gap_m"]) & (
+            previous_force[:, 2] > 0
+        )
+        slip = (current.contact @ state.velocity)[:, :2]
+        terminal_modes = contact_modes(
+            supported,
+            np.linalg.norm(slip, axis=1) > settings["spatial_slip_threshold_m_s"],
+        )
     return WholeBodyTrace(
         **{name: np.asarray([row[name] for row in rows]) for name in rows[0]},
         **{name: tuple(row[name] for row in labels) for name in labels[0]},
@@ -376,6 +394,8 @@ def run_whole_body(
         peak_abs_lean_roll=guard.peak_abs_lean_roll,
         terminal_state=state,
         terminal_force=previous_force,
+        terminal_contact_modes=terminal_modes,
+        terminal_integrated_effort=integrated_effort,
         fallback_gain=setup.gain,
         fallback_a=setup.a[1:, 1:],
         fallback_b=setup.b[1:],

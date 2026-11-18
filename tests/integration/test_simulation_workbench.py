@@ -61,6 +61,14 @@ def test_left_grip_parity_and_comparison(session, left_grip, tmp_path):
         assert left_grip.signals[side + "_contact_mode"].values[:-1] == [
             m[index] for m in trace.contact_modes
         ]
+        assert (
+            left_grip.signals[side + "_contact_mode"].values[-1]
+            == trace.terminal_contact_modes[index]
+        )
+        assert (
+            left_grip.signals[side + "_hip_preceding_effort"].values[-1]
+            == trace.terminal_integrated_effort[index]
+        )
         np.testing.assert_allclose(
             np.array(left_grip.signals[side + "_O_world"].values) / 1000,
             left_grip.signals[side + "_wheel_center"].values,

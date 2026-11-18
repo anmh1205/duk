@@ -87,6 +87,8 @@ Nhiễu vận tốc được đặt ở 0,39 s. Xem lực, trượt, mô-men hô
 cùng mốc. Chọn **So sánh điều khiển** để chạy HQP với cùng cấu hình và seed.
 Tại mẫu dừng NB6, tư thế và lực vẫn phát lại được nếu hình học còn giải được.
 Các trường lệnh tại cuối bước tích phân để trống nếu vòng điều khiển đã kết thúc.
+Mô-men giữ ở bước trước vẫn hiển thị tại mốc này. Trạng thái tiếp xúc cuối bước
+dùng khe hở, lực quan sát và tốc độ trượt của mô hình.
 Tín hiệu lực NB6 dùng lực quan sát từ bước tích phân trước, với tải tĩnh khởi
 tạo tại thời điểm 0. Chế độ tiếp xúc và sự kiện NB6 là quan sát theo mẫu lệnh.
 

@@ -43,16 +43,25 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
         mode = value(side + "_contact_mode")
         wheel_effort = value(side + "_wheel_applied")
         hip_effort = value(side + "_hip_applied")
+        wheel_title, hip_title = "τ bánh", "τ hông"
+        if wheel_effort is None:
+            wheel_effort = value(side + "_wheel_preceding_effort")
+            if wheel_effort is not None:
+                wheel_title += " bước trước"
         if hip_effort is None:
-            hip_effort = value(side + "_hip_static_effort")
+            hip_effort = value(side + "_hip_preceding_effort")
+            if hip_effort is not None:
+                hip_title += " bước trước"
+            else:
+                hip_effort = value(side + "_hip_static_effort")
         label = "Trái" if side == "left" else "Phải"
         wheels.append(
             ReplayWheel(
                 value(side + "_wheel_center"),
                 value(side + "_contact_point"),
                 force,
-                f"{label} · {mode or '—'} · {decimal(normal, 2)} N\nτ bánh {decimal(wheel_effort, 3)} N·m",
-                f"τ hông {decimal(hip_effort, 3)} N·m",
+                f"{label} · {mode or '—'} · {decimal(normal, 2)} N\n{wheel_title} {decimal(wheel_effort, 3)} N·m",
+                f"{hip_title} {decimal(hip_effort, 3)} N·m",
             )
         )
     time = run.time_s[index]
@@ -69,7 +78,7 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
 
 class Viewer:
     def __init__(self, inputs: Inputs, *, headless: bool = False) -> None:
-        body = inputs.planar.parameters
+        body = inputs.fixture["planar"]
         mounts = [
             (body[f"a_{side}_x_m"], y, body[f"a_{side}_z_m"])
             for side, y in zip(
