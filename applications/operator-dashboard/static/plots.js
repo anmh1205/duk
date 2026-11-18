@@ -4,7 +4,14 @@ const stage = {
 };
 export const traceColors = ["#006d59", "#98512d"];
 const mono = 'ui-monospace, "DejaVu Sans Mono", monospace';
-const decimal = (value, digits) => value.toLocaleString("vi", {maximumFractionDigits: digits});
+export function decimal(value, digits, fixed = false) {
+  if (!Number.isFinite(value)) return "—";
+  const step = 10 ** -digits;
+  if (value !== 0 && Math.abs(value) < step) {
+    return (value > 0 ? "< " : "> ") + (Math.sign(value) * step).toLocaleString("vi", {maximumFractionDigits: digits});
+  }
+  return value.toLocaleString("vi", {minimumFractionDigits: fixed ? digits : 0, maximumFractionDigits: digits});
+}
 
 function canvasContext(canvas) {
   const {width, height} = canvas.getBoundingClientRect();

@@ -1,10 +1,7 @@
-import {drawBalance, drawKinematics, drawTrace, traceColors} from "./plots.js";
+import {decimal, drawBalance, drawKinematics, drawTrace, traceColors} from "./plots.js";
 
 const element = (id) => document.getElementById(id);
-const format = (number, digits = 3) => {
-  const visible = Math.abs(number) < .5 * 10 ** -digits ? 0 : number;
-  return visible.toLocaleString("vi", {minimumFractionDigits: digits, maximumFractionDigits: digits});
-};
+const format = (number, digits = 3) => decimal(number, digits, true);
 const degrees = (radians) => radians * 180 / Math.PI;
 const peak = (values) => Math.max(0, ...values.map(Math.abs));
 const controllers = {position: "Giữ vị trí", balance: "Giữ thăng bằng"};

@@ -10,6 +10,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from workbench.records import plain
+
 from duk_core.control.sagittal_balance import design_fixed_hip_lqr
 from duk_core.modeling.kinematic_bench import KinematicBench
 from duk_core.modeling.leg_linkage import leg_jacobian, load_leg_geometry_json
@@ -42,9 +44,11 @@ def _integer(value: object, label: str, upper: int) -> int:
 class DashboardSimulation:
     """Translate JSON to the core's explicit SI inputs and return labeled traces."""
 
-    def __init__(self, repository: Path) -> None:
+    def __init__(self, repository: Path, profile_path: Path | None = None) -> None:
         geometry_path = repository / "robot/config/physical/duk_leg_geometry.json"
-        fixture_path = repository / "research/experiments/duk-v3/synthetic.json"
+        fixture_path = (
+            profile_path or repository / "research/experiments/duk-v3/synthetic.json"
+        )
         scenarios_path = (
             repository / "robot/simulation/scenarios/fixed-hip-balance.json"
         )
@@ -220,7 +224,7 @@ class DashboardSimulation:
                 "spectral_radius": design.spectral_radius,
             },
             "trace": {
-                field.name: getattr(trace, field.name).tolist()
+                field.name: plain(getattr(trace, field.name))
                 for field in fields(trace)
                 if field.name not in ("outcome", "limit_reason")
             }
