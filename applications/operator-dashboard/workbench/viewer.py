@@ -107,7 +107,7 @@ class Viewer:
             )
             if not headless:
                 self.start("rviz2", "-d", str(CONFIG))
-        except (OSError, RuntimeError):
+        except (LookupError, OSError, RuntimeError):
             self.close()
             raise
 
@@ -130,7 +130,11 @@ class Viewer:
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
+        self.processes.clear()
         if self.node is not None:
             self.node.destroy_node()
-        if self.context_owner and rclpy.ok():
-            rclpy.shutdown()
+            self.node = None
+        if self.context_owner:
+            self.context_owner = False
+            if rclpy.ok():
+                rclpy.shutdown()

@@ -15,7 +15,7 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from python_qt_binding import QtCore, QtWidgets
 
-from .inputs import merged
+from .inputs import INTEGER_SCENARIO_FIELDS, merged
 from .records import RunRecord, decimal, save_json
 from .session import CONTROLLER_LABELS, CONTROLLERS, STUDIES, Workbench
 
@@ -241,14 +241,20 @@ class ScenarioForm(W.QWidget):
         index = self.study.findData(study)
         if index < 0:
             raise ValueError("Unknown study")
-        configuration = merged(
-            self.session.defaults(study, options.get("case")), options
-        )
+        defaults = self.session.defaults(study, options.get("case"))
+        configuration = merged(defaults, options)
+        if study == "NB6":
+            for name in ("friction", "friction_after"):
+                if type(configuration[name]) in (int, float):
+                    configuration[name] = [configuration[name]] * 2
+        for name, default in defaults.items():
+            if type(default) is bool and type(configuration[name]) is not bool:
+                raise ValueError(f"{name} phải có giá trị bật hoặc tắt.")
         self.study.blockSignals(True)
         self.study.setCurrentIndex(index)
         self.study.blockSignals(False)
-        self.set_cases(study, options.get("case"))
-        self.set_editors(configuration)
+        self.set_cases(study, configuration.get("case"))
+        self.set_editors(configuration, defaults)
 
     def set_cases(self, study: str, selected: str | None) -> None:
         self.case.blockSignals(True)
@@ -264,11 +270,12 @@ class ScenarioForm(W.QWidget):
         self.change_case()
 
     def change_case(self) -> None:
-        self.set_editors(
-            self.session.defaults(self.study.currentData(), self.case.currentData())
+        defaults = self.session.defaults(
+            self.study.currentData(), self.case.currentData()
         )
+        self.set_editors(defaults, defaults)
 
-    def set_editors(self, configuration: dict) -> None:
+    def set_editors(self, configuration: dict, defaults: dict) -> None:
         self.editor.clear()
         body = W.QWidget()
         layout = W.QFormLayout(body)
@@ -277,6 +284,7 @@ class ScenarioForm(W.QWidget):
         for name, value in configuration.items():
             if name in ("study", "case"):
                 continue
+            default = defaults[name]
             if name in OPTIONS:
                 choices = OPTIONS[name]
                 if name == "controller":
@@ -292,19 +300,19 @@ class ScenarioForm(W.QWidget):
                     choices = {key: choices[key] for key in mode_keys}
                 widget = combo(choices)
                 widget.setCurrentIndex(widget.findData(value))
-            elif isinstance(value, bool):
+            elif isinstance(default, bool):
                 widget = W.QCheckBox()
                 widget.setChecked(value)
             else:
                 widget = W.QLineEdit()
                 widget.setText(self.editor_text(value))
-                if isinstance(value, list):
+                if isinstance(default, list):
                     widget.setToolTip("Các thành phần cách nhau bằng dấu /.")
-                if value is None:
+                if default is None:
                     widget.setPlaceholderText("Tự động")
             widget.setObjectName(name)
             layout.addRow(FIELD_LABELS.get(name, name), widget)
-            self.editor[name] = (widget, value)
+            self.editor[name] = (widget, default)
 
     @staticmethod
     def editor_text(value):
@@ -312,15 +320,15 @@ class ScenarioForm(W.QWidget):
             return ""
         if isinstance(value, list):
             return " / ".join(ScenarioForm.editor_text(v) for v in value)
-        if type(value) in (float, int):
-            return np.format_float_positional(float(value), trim="-").replace(".", ",")
+        if type(value) is float:
+            return np.format_float_positional(value, trim="-").replace(".", ",")
         return str(value)
 
     def configuration(self) -> dict:
         selection = {"study": self.study.currentData()}
         if self.case.count():
             selection["case"] = self.case.currentData()
-        for name, (widget, original) in self.editor.items():
+        for name, (widget, default) in self.editor.items():
             if isinstance(widget, W.QCheckBox):
                 value = widget.isChecked()
             elif isinstance(widget, W.QComboBox):
@@ -328,9 +336,9 @@ class ScenarioForm(W.QWidget):
             else:
                 try:
                     text = widget.text().strip().replace(",", ".")
-                    if isinstance(original, list):
+                    if isinstance(default, list):
                         value = [float(item.strip()) for item in text.split("/")]
-                    elif type(original) is int:
+                    elif name in INTEGER_SCENARIO_FIELDS:
                         value = int(text)
                     else:
                         value = float(text) if text else None
@@ -645,15 +653,7 @@ class WorkbenchWindow(W.QMainWindow):
         self.signal.clear()
         candidates = self.scoped_signals(self.run)
         for name, signal in candidates.items():
-            if any(
-                type(item) in (int, float)
-                or (
-                    isinstance(item, list)
-                    and item
-                    and all(type(v) in (int, float) for v in item)
-                )
-                for item in signal.values
-            ):
+            if signal.plot_components() is not None:
                 self.signal.addItem(f"{label(name)} ({signal.unit})", name)
         if self.signal.findData(current) < 0:
             preferred = next(
@@ -683,6 +683,7 @@ class WorkbenchWindow(W.QMainWindow):
         key = self.signal.currentData()
         if not self.run:
             return
+        component_count = None
         for index, run in enumerate((self.run, self.comparison)):
             if not run or key not in run.signals:
                 continue
@@ -690,17 +691,13 @@ class WorkbenchWindow(W.QMainWindow):
             unit = self.run.signals[key].unit
             if signal.unit != unit or signal.frame != self.run.signals[key].frame:
                 continue
-            sample = next((v for v in signal.values if v is not None), None)
-            if isinstance(sample, list):
-                axes = np.array(
-                    [
-                        v if v is not None else [np.nan] * len(sample)
-                        for v in signal.values
-                    ],
-                    dtype=float,
-                ).T
-            else:
-                axes = [np.array(signal.values, dtype=float)]
+            axes = signal.plot_components()
+            if axes is None:
+                continue
+            if index == 0:
+                component_count = len(axes)
+            elif len(axes) != component_count:
+                continue
             for component, values in enumerate(axes):
                 times = run.time_s
                 if signal.held and len(values) > 1 and np.isnan(values[-1]):
@@ -802,7 +799,6 @@ class WorkbenchWindow(W.QMainWindow):
             self.viewer_button.setToolTip(str(exc))
             self.status.setText("RViz chưa kết nối · " + str(exc))
             return
-        self.viewer_button.setText("RViz đã kết nối")
 
     def publish_frame(self) -> None:
         if not self.viewer:

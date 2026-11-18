@@ -116,13 +116,17 @@ class Workbench:
 
 
 def _same(a: Any, b: Any) -> bool:
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(
+            _same(value, b[key]) for key, value in a.items()
+        )
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
     if type(a) in (int, float) and type(b) in (int, float):
         return isclose(
             a, b, abs_tol=REPLAY_TOLERANCE["atol"], rel_tol=REPLAY_TOLERANCE["rtol"]
         )
-    return a == b
+    return type(a) is type(b) and a == b
 
 
 def check_replay(original: RunRecord, repeated: RunRecord) -> None:
@@ -130,12 +134,18 @@ def check_replay(original: RunRecord, repeated: RunRecord) -> None:
         raise ValueError("Replay changed the study or its stopping reason")
     if not _same(original.time_s, repeated.time_s):
         raise ValueError("Replay changed the time or sample count")
-    if original.events != repeated.events:
+    if not _same(original.events, repeated.events):
         raise ValueError("Replay changed an event")
     if original.signals.keys() != repeated.signals.keys():
         raise ValueError("Replay changed the recorded signals")
     for name, trace in original.signals.items():
-        if name != "solver_seconds" and not _same(
-            trace.values, repeated.signals[name].values
+        other = repeated.signals[name]
+        if (trace.unit, trace.scope, trace.frame, trace.held) != (
+            other.unit,
+            other.scope,
+            other.frame,
+            other.held,
         ):
+            raise ValueError(f"Replay changed the signal metadata for {name}")
+        if name != "solver_seconds" and not _same(trace.values, other.values):
             raise ValueError(f"Replay differs beyond tolerance for {name}")

@@ -16,6 +16,19 @@ SCHEMA = 1
 REPLAY_TOLERANCE = {"atol": 1e-8, "rtol": 1e-7}
 
 
+def finite_number(value: Any) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def reject_json_constant(value: str) -> None:
+    raise ValueError(f"Invalid JSON number {value}")
+
+
 def plain(value: Any) -> Any:
     """Convert NumPy outputs to strict JSON, preserving missing samples as null."""
     if isinstance(value, np.ndarray):
@@ -38,7 +51,7 @@ def decimal(value: Any, decimals: int = 6) -> str:
     if value is None:
         return "—"
     if isinstance(value, (int, float, np.number)):
-        if not math.isfinite(value):
+        if not finite_number(value.item() if isinstance(value, np.number) else value):
             return "—"
         step = 10 ** (-decimals)
         if 0 < abs(value) < step:
@@ -59,6 +72,44 @@ class Signal:
     frame: str = ""
     held: bool = False
 
+    def __post_init__(self) -> None:
+        if (
+            not all(
+                isinstance(value, str) for value in (self.unit, self.scope, self.frame)
+            )
+            or not isinstance(self.values, list)
+            or type(self.held) is not bool
+        ):
+            raise ValueError("Invalid signal metadata or sample list")
+
+    def plot_components(self) -> np.ndarray | None:
+        """Convert scalar/vector numeric samples to rows with missing values as NaN."""
+        available = [sample for sample in self.values if sample is not None]
+        if not available:
+            return None
+        if all(finite_number(sample) for sample in available):
+            return np.array([self.values], dtype=float)
+        first = available[0]
+        if not isinstance(first, list) or not first:
+            return None
+        width = len(first)
+        if not all(
+            isinstance(sample, list)
+            and len(sample) == width
+            and all(value is None or finite_number(value) for value in sample)
+            for sample in available
+        ):
+            return None
+        if not any(any(value is not None for value in sample) for sample in available):
+            return None
+        return np.array(
+            [
+                sample if sample is not None else [None] * width
+                for sample in self.values
+            ],
+            dtype=float,
+        ).T
+
 
 @dataclass(frozen=True)
 class RunRecord:
@@ -73,10 +124,26 @@ class RunRecord:
     replay_tolerance: dict[str, float] = field(default_factory=REPLAY_TOLERANCE.copy)
 
     def __post_init__(self) -> None:
+        if (
+            not isinstance(self.study, str)
+            or not isinstance(self.stop_reason, str)
+            or not isinstance(self.configuration, dict)
+            or self.configuration.get("study") != self.study
+            or not isinstance(self.provenance, dict)
+            or not isinstance(self.metadata, dict)
+            or not isinstance(self.events, list)
+            or any(
+                self.configuration.get(name) is not None
+                and not isinstance(self.configuration[name], str)
+                for name in ("controller", "case")
+            )
+        ):
+            raise ValueError("Invalid study, configuration or metadata")
         times = self.time_s
         if (
-            not times
-            or any(type(t) not in (int, float) or not math.isfinite(t) for t in times)
+            not isinstance(times, list)
+            or not times
+            or not all(map(finite_number, times))
             or times[0] < 0
             or any(b <= a for a, b in zip(times, times[1:]))
         ):
@@ -90,6 +157,19 @@ class RunRecord:
         if self.replay_tolerance != REPLAY_TOLERANCE:
             raise ValueError("Unsupported numerical tolerance for this run format")
         for event in self.events:
+            if (
+                not isinstance(event, dict)
+                or not isinstance(event.get("name"), str)
+                or any(
+                    key not in event
+                    or (
+                        event[key] is not None
+                        and (not finite_number(event[key]) or event[key] < 0)
+                    )
+                    for key in ("actual_s", "requested_s")
+                )
+            ):
+                raise ValueError("Invalid run event")
             when = event["actual_s"]
             if when is not None and not times[0] <= when <= times[-1]:
                 raise ValueError("An event lies outside the recorded run")
@@ -100,8 +180,10 @@ class RunRecord:
     @classmethod
     def load(cls, path: Path) -> RunRecord:
         try:
-            payload = plain(json.loads(path.read_text(encoding="utf-8")))
-            if payload.pop("schema_version") != SCHEMA:
+            payload = json.loads(
+                path.read_text(encoding="utf-8"), parse_constant=reject_json_constant
+            )
+            if not isinstance(payload, dict) or payload.pop("schema_version") != SCHEMA:
                 raise ValueError("Unsupported run format")
             payload["signals"] = {
                 name: Signal(**value) for name, value in payload["signals"].items()

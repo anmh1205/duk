@@ -15,22 +15,21 @@ from duk_core.modeling import build_planar_biped_model, load_leg_geometry_json
 from duk_core.modeling.hip_load import LinearTorqueSpeed
 from duk_core.modeling.planar_numeric import NumericPlanarBiped
 
-from .records import decimal
+from .records import decimal, finite_number
 
 ROOT = Path(__file__).resolve().parents[3]
 GEOMETRY = ROOT / "robot/config/physical/duk_leg_geometry.json"
 PROFILE = ROOT / "research/experiments/duk-v3/synthetic.json"
 LEFT_GRIP = ROOT / "robot/simulation/scenarios/whole-body-left-grip.json"
+INTEGER_SCENARIO_FIELDS = frozenset(
+    ("sensor_seed", "substeps", "noise_seed", "delay_samples", "mpc_horizon")
+)
 
 
 def number(
     value: Any, name: str, low: float = -math.inf, high: float = math.inf
 ) -> float:
-    if (
-        type(value) not in (int, float)
-        or not low <= value <= high
-        or not math.isfinite(value)
-    ):
+    if not finite_number(value) or not low <= value <= high:
         bounds = [
             f"{operator} {decimal(bound)}"
             for operator, bound in (("≥", low), ("≤", high))
@@ -188,7 +187,7 @@ class Inputs:
                     len(default),
                     0 if name.startswith("friction") else -math.inf,
                 )
-            if type(default) is float:
+            if type(default) in (float, int) and name not in INTEGER_SCENARIO_FIELDS:
                 lower = (
                     0
                     if name.endswith(("_s", "_hz")) or name == "accel_noise_m_s2"

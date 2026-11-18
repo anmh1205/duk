@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import math
 import time
+from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
-from workbench.inputs import LEFT_GRIP, Inputs, read_object
-from workbench.records import RunRecord, decimal
-from workbench.session import Workbench
+from workbench.inputs import LEFT_GRIP, PROFILE, Inputs, read_object
+from workbench.records import RunRecord, Signal, decimal, event
+from workbench.session import Workbench, check_replay
 from workbench.spatial import spatial_model
 
 from duk_core.simulation.whole_body import run_whole_body
@@ -23,6 +25,82 @@ def session():
 @pytest.fixture(scope="module")
 def left_grip(session):
     return session.run(read_object(LEFT_GRIP))
+
+
+@pytest.fixture
+def small_record():
+    return RunRecord(
+        "NB3",
+        {"study": "NB3"},
+        {},
+        [0.0, 1.0],
+        {"force": Signal("N", "left.wheel", [0, 1])},
+        "completed",
+        [event("completed", None, 1.0)],
+        {},
+    )
+
+
+def test_replay_validates_signal_metadata_and_uses_tolerance_for_event_time(
+    small_record,
+):
+    end = 1.0 + 1e-9
+    check_replay(
+        small_record,
+        replace(
+            small_record, time_s=[0.0, end], events=[event("completed", None, end)]
+        ),
+    )
+    force = small_record.signals["force"]
+    for change, message in (
+        ({"unit": "N·m"}, "signal metadata"),
+        ({"frame": "body"}, "signal metadata"),
+        ({"values": [False, True]}, "beyond tolerance"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            check_replay(
+                small_record,
+                replace(small_record, signals={"force": replace(force, **change)}),
+            )
+
+
+def test_run_file_rejects_invalid_signal_and_event_metadata(small_record, tmp_path):
+    path = tmp_path / "bad-run.json"
+    payload = {"schema_version": 1, **asdict(small_record)}
+    payload["signals"]["force"]["scope"] = 4
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="signal metadata"):
+        RunRecord.load(path)
+    payload["signals"]["force"]["scope"] = "left.wheel"
+    payload["events"][0].pop("requested_s")
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="Invalid run event"):
+        RunRecord.load(path)
+
+
+def test_signal_plot_keeps_missing_components_and_rejects_incompatible_shapes():
+    signal = Signal("N", "left.wheel", [[1.0, None], None, [2.0, 3.0]])
+    np.testing.assert_equal(
+        signal.plot_components(), [[1.0, np.nan, 2.0], [np.nan, np.nan, 3.0]]
+    )
+    assert replace(signal, values=[[1.0], [2.0, 3.0]]).plot_components() is None
+    assert replace(signal, values=[[["a"]], [[1.0]]]).plot_components() is None
+
+
+def test_profile_integer_literals_do_not_bypass_nb6_number_validation(tmp_path):
+    profile = read_object(PROFILE)
+    profile["whole_body"]["scenario"]["friction_change_s"] = 5
+    alternate = tmp_path / "synthetic.json"
+    alternate.write_text(json.dumps(profile))
+    inputs = Inputs(alternate)
+    with pytest.raises(ValueError, match="friction_change_s"):
+        inputs.whole_body_configuration({"friction_change_s": -1})
+    assert (
+        inputs.whole_body_configuration({"friction_change_s": 0.25})[
+            "friction_change_s"
+        ]
+        == 0.25
+    )
 
 
 def test_left_grip_parity_and_comparison(session, left_grip, tmp_path):
@@ -199,6 +277,9 @@ def test_sagittal_contact_termination_and_height_policies(session):
         math.sqrt(0.2 / session.inputs.planar.parameters["g_m_s2"]), abs=1e-7
     )
     assert limit.stop_reason == "rolling_limit" and 0 < limit.time_s[-1] < 0.2
+    touching = session.run({"study": "NB3", "case": "flight", "drop_height_m": 0})
+    assert touching.stop_reason == "touchdown"
+    assert touching.time_s == [0.0]
     options = {"study": "NB5", "case": "slow", "duration_s": 0.2}
     mpc = session.run(options | {"controller": "mpc"})
     fixed = session.run(options | {"controller": "fixed"})
@@ -220,6 +301,35 @@ def test_sagittal_contact_termination_and_height_policies(session):
 def test_rejects_incompatible_studies_and_commands(session, options):
     with pytest.raises(ValueError):
         session.run(options)
+
+
+@pytest.mark.ros
+def test_viewer_start_failure_cleans_up_ros_and_publisher(session, monkeypatch):
+    rclpy = pytest.importorskip("rclpy")
+    from workbench.viewer import Viewer
+
+    started = []
+    original_start = Viewer.start
+
+    def missing_rviz(viewer, package, *args):
+        if package == "rviz2":
+            raise LookupError("RViz package unavailable")
+        original_start(viewer, package, *args)
+        started.extend(viewer.processes)
+
+    monkeypatch.setattr(Viewer, "start", missing_rviz)
+    try:
+        with pytest.raises(LookupError, match="RViz package unavailable"):
+            Viewer(session.inputs)
+        assert started and all(proc.poll() is not None for proc in started)
+        assert not rclpy.ok()
+    finally:
+        for proc in started:
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=5)
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 @pytest.mark.ros
@@ -261,6 +371,15 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch):
     try:
         window.show()
         until(lambda: window.run is not None)
+        window.scenario.set_configuration({"study": "NB6"})
+        assert window.scenario.configuration()["case"] == "nominal"
+        window.scenario.set_configuration(
+            {"study": "NB6", "case": "nominal", "duration_s": 1, "friction": 0.5}
+        )
+        window.scenario.findChild(W.QLineEdit, "duration_s").setText("0,5")
+        edited = window.scenario.configuration()
+        assert edited["duration_s"] == 0.5
+        assert edited["friction"] == [0.5, 0.5]
         window.scenario.set_configuration(
             session.defaults("NB6", "left_grip") | {"duration_s": 0.45}
         )

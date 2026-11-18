@@ -25,16 +25,23 @@ def main() -> None:
         parser.error("Choose --scenario or --open")
     if args.controller and args.open:
         parser.error("--controller applies to a scenario")
-    workbench = Workbench(Inputs(args.profile))
-    options = read_object(args.scenario or LEFT_GRIP)
-    if args.controller:
-        options["controller"] = args.controller
-    saved = RunRecord.load(args.open) if args.open else None
-    if args.output:
-        result = workbench.verify_replay(saved) if saved else workbench.run(options)
-        result.save(args.output)
-        print(f"{result.study} · {result.stop_reason} · {decimal(result.time_s[-1])} s")
-        return
+    try:
+        workbench = Workbench(Inputs(args.profile))
+        saved = RunRecord.load(args.open) if args.open else None
+        options = (
+            saved.configuration if saved else read_object(args.scenario or LEFT_GRIP)
+        )
+        if args.controller:
+            options["controller"] = args.controller
+        if args.output:
+            result = workbench.verify_replay(saved) if saved else workbench.run(options)
+            result.save(args.output)
+            print(
+                f"{result.study} · {result.stop_reason} · {decimal(result.time_s[-1])} s"
+            )
+            return
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        parser.error(str(exc))
 
     from workbench.qt_panel import run_qt
 
