@@ -18,6 +18,8 @@ class Observation:
     modes: tuple[str, str]
     speed: float
     estimated_speed: float
+    odometry: float
+    acceleration: float
 
 
 class ContactObserver:
@@ -27,9 +29,8 @@ class ContactObserver:
         self.settings = settings
         self.observer = SlipGatedVelocity(0.0, settings["slip_threshold_m_s"], 2, 0.08)
         self.rng = np.random.default_rng(settings["sensor_seed"])
-        self.friction_belief = np.full(
-            2, scenario["friction"] * settings["friction_reserve"]
-        )
+        self.friction_belief = np.full(2, scenario["friction"], dtype=float)
+        self.friction_belief *= settings["friction_reserve"]
         self.last_speed = self.forward_estimate = 0.0
 
     def observe(self, model, state, terms, previous_force, tick) -> Observation:
@@ -42,6 +43,7 @@ class ContactObserver:
             k.forward @ (k.linear[model.wheels] @ state.velocity).mean(axis=0)
         )
         odometry = model.rolling_odometry(k, state.velocity).mean()
+        independent = np.nan
         if tick:
             independent = (current_speed - self.last_speed) / period + self.rng.normal(
                 0.0, p["accel_noise_m_s2"]
@@ -82,6 +84,8 @@ class ContactObserver:
             modes=modes,
             speed=current_speed,
             estimated_speed=self.forward_estimate,
+            odometry=odometry,
+            acceleration=independent,
         )
 
 

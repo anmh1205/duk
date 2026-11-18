@@ -95,7 +95,7 @@ class ReferencePolicy:
         ]
         phase = 2 * np.pi * c["bounce_hz"] * max(0.0, t - c["feature_start_s"])
         omega = 2 * np.pi * c["bounce_hz"]
-        wave = c["bounce_amplitude_m"] * np.sin(phase)
+        wave = c.get("height_offset_m", 0.0) + c["bounce_amplitude_m"] * np.sin(phase)
         wave_rate = c["bounce_amplitude_m"] * omega * np.cos(phase)
         amount_rate = self.features[0].rate
         h_ref = home + amounts[0] * wave

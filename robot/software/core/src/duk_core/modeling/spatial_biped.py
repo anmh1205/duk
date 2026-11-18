@@ -75,6 +75,7 @@ class SpatialKinematics:
     tasks: np.ndarray
     task_jacobian: np.ndarray
     forward: np.ndarray
+    contact_points: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -262,7 +263,16 @@ class SpatialBiped:
             ]
         )
         return SpatialKinematics(
-            centers, linear, angular, inertias, contact, gaps, tasks, task_j, forward
+            centers,
+            linear,
+            angular,
+            inertias,
+            contact,
+            gaps,
+            tasks,
+            task_j,
+            forward,
+            centers[self.wheels] + bottom,
         )
 
     def rolling_odometry(self, kinematics, velocity):

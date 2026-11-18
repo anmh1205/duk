@@ -57,6 +57,45 @@ class WholeBodyTrace:
     peak_abs_lean_roll: np.ndarray
     friction_belief: np.ndarray
     actual_friction: np.ndarray  # Synthetic plant input, not a measured channel.
+    position: np.ndarray
+    rotation: np.ndarray
+    joints: np.ndarray
+    velocity: np.ndarray
+    wheel_centers: np.ndarray
+    wheel_velocity: np.ndarray
+    contact_points: np.ndarray
+    center_of_mass: np.ndarray
+    sensor: np.ndarray  # Mean wheel odometry [m/s], independent acceleration [m/s²].
+    sensor_valid: np.ndarray
+    terminal_state: SpatialState
+    terminal_force: np.ndarray
+    task_names: tuple[tuple[str, ...], ...]
+    task_targets: np.ndarray
+    task_scales: np.ndarray
+    active_constraints: tuple[tuple[str, ...], ...]
+    fallback_gain: np.ndarray
+    fallback_a: np.ndarray
+    fallback_b: np.ndarray
+
+    def state_at(self, index: int) -> SpatialState:
+        """World position, body-to-world rotation, joints and generalized velocity."""
+        return SpatialState(
+            self.position[index],
+            self.rotation[index],
+            self.joints[index],
+            self.velocity[index],
+        )
+
+
+def _friction_pair(value, name: str) -> np.ndarray:
+    pair = np.asarray(value, dtype=float)
+    if pair.ndim == 0:
+        pair = np.full(2, pair)
+    if pair.shape != (2,) or not np.isfinite(pair).all() or np.any(pair < 0):
+        raise ValueError(
+            f"{name} must be nonnegative and finite, scalar or [left, right]"
+        )
+    return pair
 
 
 def _allocate_sample(
@@ -123,6 +162,8 @@ def run_whole_body(
     time, like the sampled friction and fault changes. No impulse is delivered
     after the last command sample, including at the terminal horizon.
     """
+    if method not in {"weighted", "hierarchical"}:
+        raise ValueError("Unknown allocation method")
     if priority not in {"balance_first", "legs_first"}:
         raise ValueError("Unknown task priority")
     period, duration, substeps = (
@@ -140,6 +181,11 @@ def run_whole_body(
             "Expected positive simulation times and an integer substep count"
         )
     times, ends = sample_intervals(duration, period)
+    friction_before = _friction_pair(scenario["friction"], "friction")
+    friction_after = _friction_pair(scenario["friction_after"], "friction_after")
+    friction_change = scenario["friction_change_s"]
+    if not np.isfinite(friction_change) or friction_change < 0:
+        raise ValueError("friction_change_s must be finite and nonnegative")
     impulse_time = scenario["impulse_at_s"]
     linear_impulse = np.asarray(scenario["velocity_impulse_m_s"], dtype=float)
     angular_impulse = np.asarray(
@@ -158,7 +204,7 @@ def run_whole_body(
     impulse_tick = np.searchsorted(times, impulse_time)
     setup = initialize(model, weights, settings, scenario)
     state = setup.state
-    observer = ContactObserver(settings, scenario)
+    observer = ContactObserver(settings, {**scenario, "friction": friction_before})
     references = ReferencePolicy(settings, scenario, setup.home_height)
     supervisor = Supervisor(
         settings["fallback_after"],
@@ -178,12 +224,7 @@ def run_whole_body(
             velocity[3:6] += angular_impulse
             state = SpatialState(state.position, state.rotation, state.joints, velocity)
         fault = scenario["fault_start_s"] <= time < scenario["fault_end_s"]
-        friction = np.full(
-            2,
-            scenario["friction_after"]
-            if time >= scenario["friction_change_s"]
-            else scenario["friction"],
-        )
+        friction = friction_after if time >= friction_change else friction_before
         terms = model.evaluate(state)
         observation = observer.observe(model, state, terms, previous_force, tick)
         fallen = guard.observe(terms.kinematics, previous_force, time)
@@ -255,9 +296,23 @@ def run_whole_body(
                 pose=observation.pose,
                 pose_rate=observation.rate,
                 position_xy=state.position[:2].copy(),
+                position=state.position.copy(),
+                rotation=state.rotation.copy(),
+                joints=state.joints.copy(),
+                velocity=state.velocity.copy(),
                 hip_angles=state.joints[:2].copy(),
                 contact_gap=terms.kinematics.gaps,
                 contact_speed=observation.contact_speed,
+                wheel_centers=terms.kinematics.centers[model.wheels],
+                wheel_velocity=terms.kinematics.linear[model.wheels] @ state.velocity,
+                contact_points=terms.kinematics.contact_points,
+                center_of_mass=np.average(
+                    terms.kinematics.centers, axis=0, weights=model.masses
+                ),
+                sensor=(observation.odometry, observation.acceleration)
+                if sensor_valid
+                else (np.nan, np.nan),
+                sensor_valid=sensor_valid,
                 requested_reference=targets.requested,
                 effective_reference=targets.effective,
                 requested_effort=command.requested,
@@ -273,6 +328,8 @@ def run_whole_body(
                     observation.speed,
                     observation.estimated_speed,
                 ),
+                task_targets=[task.target for task in tasks],
+                task_scales=[task.scale for task in tasks],
                 solver_seconds=solve_seconds,
                 solver_residual=allocation.residual,
             )
@@ -285,6 +342,8 @@ def run_whole_body(
                 contact_modes=observation.modes,
                 capacity_reason=targets.capacity_reason,
                 command_source=command.source,
+                task_names=tuple(task.name for task in tasks),
+                active_constraints=allocation.active_constraints,
             )
         )
         if command.mode == "stop":
@@ -315,4 +374,9 @@ def run_whole_body(
         terminal_time=guard.terminal_time,
         terminal_pose=guard.terminal_pose,
         peak_abs_lean_roll=guard.peak_abs_lean_roll,
+        terminal_state=state,
+        terminal_force=previous_force,
+        fallback_gain=setup.gain,
+        fallback_a=setup.a[1:, 1:],
+        fallback_b=setup.b[1:],
     )
