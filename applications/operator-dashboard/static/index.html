@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DUK Simulation Lab</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">D</span><div><strong>DUK</strong><span>Simulation Lab</span></div></div>
+      <span class="profile"><i></i>Dữ liệu nghiên cứu</span>
+    </div>
+  </header>
+  <main class="shell">
+    <div class="page-heading">
+      <h1>Phòng mô phỏng</h1>
+      <nav class="mode-switch" aria-label="Chế độ mô phỏng">
+        <button id="mode-balance" type="button" aria-pressed="true">Cân bằng vòng kín</button>
+        <button id="mode-kinematics" type="button" aria-pressed="false">Động học hai chân</button>
+      </nav>
+    </div>
+    <p id="app-error" class="message error" role="alert" hidden></p>
+    <section id="balance-view" class="workspace" aria-label="Cân bằng vòng kín">
+      <aside class="card setup">
+        <h2>Cấu hình ca chạy</h2>
+        <form id="balance-form">
+          <fieldset>
+            <legend>Kịch bản</legend>
+            <label for="preset">Điều kiện mặt đất</label>
+            <select id="preset">
+              <option value="dry">Độ bám cao</option>
+              <option value="low_grip">Độ bám thấp</option>
+              <option value="low_grip_limited">Độ bám thấp · giới hạn mô-men</option>
+              <option value="custom" disabled>Tùy chỉnh</option>
+            </select>
+            <div class="field-row">
+              <label for="friction">Độ bám μ<input id="friction" name="friction" type="number" min="0" step="any" required></label>
+              <label for="initial_lean_deg">Góc đầu (°)<input id="initial_lean_deg" name="initial_lean_deg" type="number" step="any" required></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Vòng điều khiển</legend>
+            <label for="controller">Bộ điều khiển</label>
+            <select id="controller" name="controller">
+              <option value="position">LQR giữ vị trí</option>
+              <option value="balance">LQR giữ thăng bằng</option>
+            </select>
+            <label for="feedback">Nguồn phản hồi</label>
+            <select id="feedback" name="feedback">
+              <option value="odometry">Vận tốc suy từ bánh xe</option>
+              <option value="truth">Trạng thái từ mô hình</option>
+              <option value="gated">Ước lượng có phát hiện trượt</option>
+            </select>
+            <label class="check" for="use-traction"><input id="use-traction" type="checkbox">Giới hạn mô-men theo độ bám</label>
+            <label id="budget-field" for="traction_budget" hidden>Độ bám giả định μ
+              <input id="traction_budget" name="traction_budget" type="number" min="0" step="any" required disabled>
+            </label>
+          </fieldset>
+          <details class="advanced">
+            <summary>Nhiễu và độ trễ</summary>
+            <div class="field-row">
+              <label for="delay_samples">Trễ (mẫu)<input id="delay_samples" name="delay_samples" type="number" min="0" step="1" required></label>
+              <label for="noise_seed">Seed<input id="noise_seed" name="noise_seed" type="number" min="0" max="4294967295" step="1" required></label>
+            </div>
+            <label for="accel_noise">Nhiễu gia tốc (m/s²)
+              <input id="accel_noise" name="accel_noise" type="number" min="0" step="any" aria-describedby="accel-hint" required>
+            </label>
+            <p id="accel-hint" class="field-hint">Áp dụng với phản hồi có phát hiện trượt.</p>
+            <label for="pitch_noise">Nhiễu góc (rad)<input id="pitch_noise" name="pitch_noise" type="number" min="0" step="any" required></label>
+          </details>
+          <button id="run" type="submit" class="primary" disabled><span aria-hidden="true">▶</span> Chạy mô phỏng</button>
+          <p id="run-status" class="run-status" role="status">Đang tải cấu hình…</p>
+        </form>
+      </aside>
+      <div class="main-column">
+        <section class="card model-card">
+          <div class="card-heading"><div><h2>Mô hình cân bằng</h2><p>Con lắc bánh xe · Hông cố định</p></div><span id="model-state" class="state-badge" hidden></span></div>
+          <div class="model-stage"><canvas id="balance-model" aria-label="Minh họa tư thế và vị trí trục bánh của con lắc"></canvas></div>
+          <div class="playback">
+            <button id="play" type="button" aria-label="Phát lại" disabled>▶</button>
+            <input id="time" type="range" min="0" max="1" value="0" step="any" aria-label="Thời điểm mô phỏng" disabled>
+            <output id="time-label" for="time">— s</output>
+            <select id="speed" aria-label="Tốc độ phát">
+              <option value="0.25">0,25×</option><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option>
+            </select>
+          </div>
+        </section>
+        <section class="card chart-card">
+          <div class="card-heading chart-heading">
+            <h2>Tín hiệu theo thời gian</h2>
+            <label class="chart-select" for="channel">
+              <span class="visually-hidden">Tín hiệu cần vẽ</span>
+              <select id="channel">
+                <option value="lean">Góc nghiêng</option><option value="slip">Độ trượt</option><option value="torque">Mô-men</option><option value="speed">Vận tốc</option><option value="force">Lực tiếp xúc</option>
+              </select>
+            </label>
+          </div>
+          <div id="chart-legend" class="chart-legend"></div>
+          <canvas id="chart" aria-label="Biểu đồ tín hiệu, có vạch tại thời điểm phát lại"></canvas>
+        </section>
+      </div>
+      <aside class="results">
+        <section class="card result-card">
+          <div class="card-heading"><h2>Kết quả ca chạy</h2></div>
+          <div class="outcome"><span id="outcome" class="outcome-title">—</span><span id="outcome-detail" class="outcome-detail">—</span></div>
+          <dl class="metrics">
+            <div><dt>Độ trượt cực đại</dt><dd id="peak-slip">—</dd></div>
+            <div><dt>Góc nghiêng cực đại</dt><dd id="peak-lean">—</dd></div>
+            <div><dt>Mô-men áp dụng cực đại</dt><dd id="peak-torque">—</dd></div>
+          </dl>
+          <div class="result-actions">
+            <button id="pin" type="button" class="secondary" disabled>Lưu để so sánh</button>
+            <button id="download" type="button" class="secondary" disabled>Tải kết quả JSON</button>
+          </div>
+          <p id="baseline" class="baseline" hidden></p>
+          <button id="clear-baseline" type="button" class="text-button" hidden>Bỏ ca tham chiếu</button>
+        </section>
+        <section class="card live-card">
+          <div class="card-heading"><h2>Tín hiệu tại con trỏ</h2></div>
+          <dl class="signal-list">
+            <div><dt>Góc nghiêng</dt><dd id="live-lean">—</dd></div>
+            <div><dt>Độ trượt</dt><dd id="live-slip">—</dd></div>
+            <div><dt>Mô-men yêu cầu</dt><dd id="live-request">—</dd></div>
+            <div><dt>Mô-men áp dụng</dt><dd id="live-torque">—</dd></div>
+            <div><dt>Giới hạn lệnh</dt><dd id="live-limit">—</dd></div>
+          </dl>
+        </section>
+        <details class="card math-card">
+          <summary>Mô hình tuyến tính và LQR</summary>
+          <p class="equation">ẋ = A x + B u</p>
+          <p id="model-math-meta" class="math-meta"></p>
+          <div id="matrices"></div>
+        </details>
+      </aside>
+    </section>
+    <section id="kinematics-view" class="workspace" aria-label="Động học hai chân" hidden>
+      <aside class="card setup">
+        <h2>Góc khớp hông</h2>
+        <form id="kinematics-form">
+          <fieldset>
+            <legend>Tư thế theo hệ thân</legend>
+            <label for="left_deg">Chân trái qL (°)</label>
+            <div class="angle-row"><input id="left-range" type="range" step="any" aria-label="Chỉnh góc chân trái"><input id="left_deg" type="number" step="any" aria-label="Góc chân trái theo độ" required></div>
+            <label for="right_deg">Chân phải qR (°)</label>
+            <div class="angle-row"><input id="right-range" type="range" step="any" aria-label="Chỉnh góc chân phải"><input id="right_deg" type="number" step="any" aria-label="Góc chân phải theo độ" required></div>
+          </fieldset>
+          <p id="kinematic-bounds" class="run-status"></p>
+          <button type="submit" class="primary">Tính tư thế</button>
+          <button id="reset-pose" type="button" class="secondary">Về tư thế ban đầu</button>
+          <p id="pose-status" class="run-status" role="status"></p>
+        </form>
+      </aside>
+      <section class="card model-card kinematic-main">
+        <div class="card-heading"><div><h2>Cơ cấu bốn khâu</h2><p>Hình chiếu X–Z theo thân · mm</p></div></div>
+        <div class="model-stage kinematic-stage"><canvas id="kinematic-model" aria-label="Hai hình chiếu cơ cấu bốn khâu từ các góc khớp đã chọn"></canvas></div>
+      </section>
+      <aside class="card kinematic-data">
+        <div class="card-heading"><h2>Chẩn đoán hình học</h2></div>
+        <div id="kinematic-values"></div>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

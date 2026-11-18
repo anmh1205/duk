@@ -10,6 +10,7 @@ The [Python workflow](../../.github/workflows/python-core.yml) installs
 - Ruff lint/import rules and formatting for Python and notebook sources;
 - core unit tests, import-layer/cycle checks and dependency-free geometry imports;
 - ROS-independent URDF/SDF geometry adapters and developer-tool configuration tests;
+- local dashboard HTTP inputs, canonical poses, NB4 replay parity, and invalid combinations;
 - the standalone DUK leg-kinematics example;
 - symbolic geometry agreement, Lagrange identities, inverse kinematics and
   second-order derivatives; synthetic test parameters are not robot data;

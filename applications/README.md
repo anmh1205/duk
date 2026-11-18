@@ -1,13 +1,14 @@
 # Applications
 
-`applications/` reserves ownership for user-facing and externally connected DUK software.
+`applications/` owns user-facing and externally connected DUK software.
 
 | Directory | Scope |
 | --- | --- |
-| `operator-dashboard/` | Operator interface |
-| `gateway/` | Gateway and external integration |
-| `mobile/` | Mobile application |
+| `operator-dashboard/` | [Local simulation dashboard](operator-dashboard/README.md) |
+| `gateway/` | Reserved for gateway and external integration |
+| `mobile/` | Reserved for a mobile application |
 
-Frameworks, protocols, deployment and detailed interfaces have not been selected by this directory layout.
+The dashboard serves the fixed-hip balance and two-leg kinematics studies
+locally using the ROS-independent Python core.
 
 [Application documentation](../docs/applications/README.md) · [Repository layout](../docs/architecture/repository-layout.md).
