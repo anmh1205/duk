@@ -79,3 +79,23 @@ def test_rolling_limit_and_touchdown_preserve_off_grid_event_samples():
     assert flight.termination == "touchdown"
     assert flight.time[-1] == pytest.approx(np.sqrt(0.04 / 10.0))
     np.testing.assert_allclose(flight.state[-1, [1, 3]], 0, atol=1e-12)
+
+
+@pytest.mark.parametrize("speed", [0.0, 0.1])
+def test_flight_on_surface_accepts_roundoff_and_respects_event_direction(speed):
+    state = np.zeros(14)
+    state[[1, 3]] = -1e-12
+    state[[8, 10]] = speed
+    trace = simulate_planar(
+        GuardModel(),
+        state,
+        [0.0, 0.1],
+        lambda *_: np.zeros(4),
+        [0.0, 0.0],
+        mode="flight",
+        max_step=0.01,
+        rtol=1e-7,
+        atol=1e-9,
+    )
+    assert trace.termination == "touchdown"
+    assert trace.time[-1] == pytest.approx(2 * speed / 10)

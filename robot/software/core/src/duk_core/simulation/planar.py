@@ -112,7 +112,10 @@ def simulate_planar(
     def guard(time, state):
         dynamics, result, _ = calculate(time, state)
         if mode == "flight":
-            return np.min(dynamics.gaps)
+            gap = np.min(dynamics.gaps)
+            # A consistent initial pose may straddle zero at floating-point
+            # precision. Keep the exact gap for every later root evaluation.
+            return 0.0 if time == times[0] and abs(gap) <= atol else gap
         normal, tangent = np.split(result.forces, 2)
         # A force on the admissible boundary, including zero tangential force
         # at zero friction, can persist without a mode transition.
