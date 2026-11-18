@@ -12,6 +12,8 @@ on:
       - "robot/software/core/**"
       - "robot/software/ros2_ws/src/**"
       - "robot/simulation/**"
+      - "applications/operator-dashboard/**"
+      - "tests/integration/test_simulation_workbench.py"
       - "tools/dev/**"
       - "tools/environment-check/**"
   push:
@@ -65,6 +67,13 @@ jobs:
             -f .local/simulation/compose.json exec -T dev bash -lc '
               source /opt/ros/jazzy/setup.bash &&
               python tools/environment-check/verify-simulation-preview.py
+            '
+      - name: Verify Qt workbench replay against the ROS transforms
+        run: |
+          docker compose -f compose.yaml -f environment/compose/simulation.yaml \
+            -f .local/simulation/compose.json exec -T dev bash -lc '
+              source /opt/ros/jazzy/setup.bash &&
+              QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 +              python -m pytest -q -m ros tests/integration/test_simulation_workbench.py
             '
       - name: Verify moving RViz bench without windows
         run: |
