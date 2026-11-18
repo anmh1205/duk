@@ -30,6 +30,10 @@ class BalanceTrace:
     speed_estimate: np.ndarray
     limit_reason: tuple[str, ...]
     outcome: str
+    wheel_odometry: np.ndarray
+    sensed_lean: np.ndarray
+    sensed_acceleration: np.ndarray
+    slip_detected: np.ndarray
 
 
 def simulate_balance(
@@ -84,6 +88,7 @@ def simulate_balance(
     estimated_x, time = 0.0, 0.0
     commands, rows, reasons = [], [], []
     previous_applied = 0.0
+    observations = []
     outcome = "completed"
 
     def contact(s, applied):
@@ -95,6 +100,8 @@ def simulate_balance(
     for tick, end_time in enumerate(ends):
         x, speed, lean, rate, spin, spin_rate = state
         wheel_speed = model.radius_m * spin_rate
+        sensed_acceleration = np.nan
+        slip_detected = None
         if feedback == "truth":
             x_hat, speed_hat = x, speed
         elif feedback == "odometry":
@@ -102,15 +109,20 @@ def simulate_balance(
         else:
             if tick:
                 response = contact(state, previous_applied)
+                sensed_acceleration = response.acceleration[0] + rng.normal(
+                    0, accel_noise
+                )
                 estimate = observer.step(
                     period,
-                    response.acceleration[0] + rng.normal(0, accel_noise),
+                    sensed_acceleration,
                     wheel_speed,
                     in_contact=response.normal > 0,
                 )
                 estimated_x += period * estimate.speed
+                slip_detected = estimate.slip_detected
             x_hat, speed_hat = estimated_x, observer.speed
         lean_hat = lean + rng.normal(0, pitch_noise)
+        observations.append((wheel_speed, lean_hat, sensed_acceleration, slip_detected))
         request = balance_command(
             gain, [x_hat, speed_hat, lean_hat, rate], anchor=anchor
         )
@@ -198,8 +210,12 @@ def simulate_balance(
                 )
             )
             reasons.append(decision.reason)
+            observations.append((model.radius_m * state[5], np.nan, np.nan, None))
             break
 
     return BalanceTrace(
-        *[np.asarray(column) for column in zip(*rows)], tuple(reasons), outcome
+        *[np.asarray(column) for column in zip(*rows)],
+        tuple(reasons),
+        outcome,
+        *[np.asarray(column) for column in zip(*observations)],
     )
