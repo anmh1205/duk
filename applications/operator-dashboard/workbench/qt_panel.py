@@ -7,7 +7,6 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 from time import monotonic
-from typing import Any
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -17,200 +16,24 @@ from python_qt_binding import QtCore, QtWidgets
 
 from .inputs import INTEGER_SCENARIO_FIELDS, Inputs, merged
 from .kinematics import POINTS, SEGMENTS
-from .records import RunRecord, decimal, save_json
+from .records import RunRecord, decimal, finite_number, save_json
 from .session import CONTROLLER_LABELS, CONTROLLERS, STUDIES, Workbench
+from .ui_text import (
+    OPTIONS,
+    case_label,
+    configuration_value,
+    field_label,
+    frame_label,
+    label,
+    parameter_label,
+    shown,
+    unit_label,
+    wheel_readout,
+)
 
 W = QtWidgets
 ROLE = QtCore.Qt.UserRole
 COLOR = ("#166c67", "#ac4e30")
-CASE_LABELS = {
-    "left_grip": "Giảm độ bám bánh trái",
-    "nominal": "Danh định",
-    "split_level": "Hai mặt đỡ lệch",
-    "late": "Bộ giải trễ",
-    "brief_late": "Bộ giải trễ một mẫu",
-    "infeasible": "Lệnh không khả thi",
-    "sensor_lost": "Mất cảm biến",
-    "low_grip": "Giảm độ bám hai bánh",
-    "competing": "Giới hạn mô-men",
-    "drive_release": "Chạy rồi ngắt tốc độ",
-    "one_wheel": "Nhấc một bánh",
-    "brief_flight": "Bay ngắn",
-    "extended_flight": "Bay kéo dài",
-    "rolling": "Lăn cứng",
-    "compliant": "Tiếp xúc đàn hồi",
-    "slip": "Trượt",
-    "flight": "Rơi và chạm đất",
-    "rolling_limit": "Mất điều kiện lăn",
-    "dry": "Nền khô",
-    "low_grip_limited": "Ít bám, có giới hạn",
-    "slow": "Nâng chậm",
-    "fast": "Nâng nhanh",
-    "stationary": "Giữ độ cao",
-}
-FIELD_LABELS = {
-    "controller": "Bộ điều khiển",
-    "period_s": "Chu kỳ mẫu (s)",
-    "duration_s": "Thời lượng (s)",
-    "substeps": "Bước tích phân mỗi mẫu",
-    "initial_q_deg": "Góc hông ban đầu (°)",
-    "initial_lean_deg": "Độ nghiêng ban đầu (°)",
-    "friction": "Độ bám ban đầu",
-    "friction_after": "Độ bám sau thay đổi",
-    "friction_change_s": "Thời điểm đổi độ bám (s)",
-    "support_levels_m": "Cao độ mặt đỡ (m)",
-    "sensor_seed": "Seed cảm biến",
-    "noise_seed": "Seed cảm biến",
-    "fault": "Lỗi giả lập",
-    "fault_start_s": "Bắt đầu lỗi (s)",
-    "fault_end_s": "Kết thúc lỗi (s)",
-    "feedback": "Nguồn phản hồi",
-    "priority": "Thứ tự nhiệm vụ",
-    "mode": "Chế độ",
-    "inverse_side": "Chân giải nghịch",
-    "inverse_target_mm": "Tâm bánh đích x/z (mm)",
-    "force_left_N": "Tải ngoài bánh trái x/z (N)",
-    "force_right_N": "Tải ngoài bánh phải x/z (N)",
-    "joint_rate_rad_s": "Vận tốc góc L/R (rad/s)",
-    "joint_accel_rad_s2": "Gia tốc góc L/R (rad/s²)",
-    "left_q_deg": "Góc trái (°)",
-    "right_q_deg": "Góc phải (°)",
-    "left_final_deg": "Góc cuối trái (°)",
-    "right_final_deg": "Góc cuối phải (°)",
-    "height_offset_m": "Độ cao đặt so với gốc (m)",
-    "drive_speed_m_s": "Vận tốc đặt (m/s)",
-    "turn_rate_rad_s": "Tốc độ quay đặt (rad/s)",
-    "level_hold": "Cân bằng ngang",
-    "heading_hold": "Giữ hướng",
-    "anchor": "Về điểm neo",
-    "delay_samples": "Trễ lệnh (mẫu)",
-    "trajectory": "Quỹ đạo",
-    "max_step_s": "Bước tích phân tối đa (s)",
-    "initial_axle_m_s": "Vận tốc trục ban đầu (m/s)",
-    "drop_height_m": "Độ cao thả ban đầu (m)",
-    "total_wheel_torque_N_m": "Mô-men tổng hai bánh (N·m)",
-    "wheel_torque_ramp_N_m_s": "Tốc độ tăng mô-men tổng (N·m/s)",
-    "accel_noise_m_s2": "Độ lệch chuẩn nhiễu gia tốc (m/s²)",
-    "encoder_noise_rad_s": "Độ lệch chuẩn nhiễu encoder (rad/s)",
-    "accel_noise": "Độ lệch chuẩn nhiễu gia tốc (m/s²)",
-    "pitch_noise": "Độ lệch chuẩn nhiễu góc nghiêng (rad)",
-    "traction_budget": "Độ bám giả định để giới hạn lệnh",
-    "lift_s": "Thời gian nâng (s)",
-    "target_q_deg": "Góc hông đích (°)",
-    "total_wheel_limit_N_m": "Giới hạn mô-men tổng hai bánh (N·m)",
-    "mpc_horizon": "Chân trời MPC (mẫu)",
-    "feature_start_s": "Bắt đầu nhiệm vụ phụ (s)",
-    "bounce_off_s": "Kết thúc dao động độ cao (s)",
-    "bounce_amplitude_m": "Biên độ dao động độ cao (m)",
-    "bounce_hz": "Tần số dao động độ cao (Hz)",
-    "turn_end_s": "Kết thúc lệnh quay (s)",
-    "drive_end_s": "Kết thúc lệnh vận tốc (s)",
-    "reference_capacity": "Hệ số giới hạn tham chiếu",
-    "hip_capacity": "Hệ số giới hạn mô-men hông",
-    "impulse_at_s": "Thời điểm nhiễu động (s)",
-    "velocity_impulse_m_s": "Bước đổi vận tốc x/y/z (m/s)",
-    "angular_velocity_impulse_rad_s": "Bước đổi vận tốc góc x/y/z (rad/s)",
-}
-OPTIONS = {
-    "controller": CONTROLLER_LABELS,
-    "priority": {"balance_first": "Thăng bằng trước", "legs_first": "Chân trước"},
-    "feedback": {
-        "truth": "Trạng thái mô hình",
-        "odometry": "Odometry bánh",
-        "gated": "Ước lượng phát hiện trượt",
-    },
-    "fault": {
-        "none": "Không",
-        "sensor": "Mất cảm biến",
-        "deadline": "Bộ giải trễ",
-        "infeasible": "Bài toán vô nghiệm",
-    },
-    "inverse_side": {"left": "Trái", "right": "Phải"},
-    "mode": {
-        "pose": "Tư thế và đạo hàm",
-        "trajectory": "Quỹ đạo đặt",
-        "load_sweep": "Quét góc và tải hông tĩnh",
-        "inverse": "Động học nghịch",
-        "rolling": "Lăn cứng",
-        "compliant": "Đàn hồi",
-        "flight": "Bay",
-    },
-}
-SIGNAL_LABELS = {
-    "height": "Độ cao thân",
-    "lean": "Góc nghiêng quanh trục bánh",
-    "pitch": "Góc nghiêng dọc",
-    "roll": "Góc nghiêng ngang",
-    "yaw": "Hướng quay",
-    "position": "Vị trí thân",
-    "center_of_mass": "Tâm khối lượng",
-    "model_speed": "Vận tốc mô hình",
-    "estimated_speed": "Vận tốc ước lượng",
-    "odometry_speed": "Vận tốc odometry",
-    "accelerometer": "Gia tốc cảm biến",
-    "speed_estimation_error": "Sai số vận tốc ước lượng",
-    "speed_tracking_error": "Sai số bám vận tốc",
-    "yaw_rate_tracking_error": "Sai số bám tốc độ quay",
-    "height_tracking_error": "Sai số bám độ cao",
-    "yaw_rate": "Tốc độ quay",
-    "torque_interval": "Khoảng mô-men khả thi",
-    "force_constraints": "Dư lượng ràng buộc lực thực tế",
-    "normal_force": "Lực pháp tuyến",
-    "tangential_force": "Lực tiếp tuyến",
-    "slip_speed": "Tốc độ trượt",
-    "gap": "Khe hở",
-    "friction": "Độ bám mô hình",
-    "friction_belief": "Độ bám ước lượng",
-    "contact_mode": "Tiếp xúc",
-    "wheel_center": "Tâm bánh",
-    "hip_angle": "Góc hông",
-    "hip_applied": "Mô-men hông áp dụng",
-    "hip_static_effort": "Mô-men hông tĩnh",
-    "hip_limit": "Mô-men hông cho phép",
-    "envelope_rate": "Tốc độ khảo sát đường bao",
-    "hip_saturation": "Bão hòa mô-men hông",
-    "hip_requested": "Mô-men hông yêu cầu",
-    "hip_preceding_effort": "Mô-men hông giữ ở bước trước",
-    "wheel_applied": "Mô-men bánh áp dụng",
-    "wheel_requested": "Mô-men bánh yêu cầu",
-    "wheel_limit": "Mô-men bánh cho phép",
-    "wheel_preceding_effort": "Mô-men bánh giữ ở bước trước",
-    "command_source": "Nguồn lệnh",
-    "supervisor": "Giám sát",
-}
-STATE_LABELS = {
-    "completed": "Hết thời lượng",
-    "touchdown": "Chạm đất",
-    "rolling_limit": "Mất điều kiện lăn",
-    "hip_travel": "Vượt hành trình hông",
-    "flight_or_fall": "Bay quá lâu hoặc ngã",
-    "sensor": "Mất cảm biến",
-    "no_valid_command": "Thiếu lệnh khả thi",
-    "pitch_limit": "Chạm giới hạn nghiêng",
-    "traction_infeasible": "Mô-men bất khả thi",
-    "lost_contact": "Mất tiếp xúc",
-    "rolling": "Lăn",
-    "sliding": "Trượt",
-    "flight": "Bay",
-    "allocator": "Bộ phân bổ",
-    "balance_fallback": "LQR dự phòng",
-    "normal": "Bình thường",
-    "stop": "Dừng",
-}
-
-
-def label(name: str) -> str:
-    side, sep, signal = name.partition("_")
-    prefix = {"left": "Trái · ", "right": "Phải · "}.get(side) if sep else None
-    if prefix:
-        return prefix + SIGNAL_LABELS.get(signal, signal.replace("_", " "))
-    return SIGNAL_LABELS.get(name, name.replace("_", " "))
-
-
-def shown(value: Any) -> str:
-    if isinstance(value, str):
-        return STATE_LABELS.get(value, value)
-    return decimal(value)
 
 
 def combo(options: dict[str, str]) -> W.QComboBox:
@@ -232,8 +55,12 @@ def details_tree(tree: W.QTreeWidget, data: dict) -> None:
     def insert(parent, key, value):
         matrix = isinstance(value, list) and value and isinstance(value[0], list)
         item = W.QTreeWidgetItem(
-            [key, "" if isinstance(value, dict) or matrix else shown(value)]
+            [
+                parameter_label(key),
+                "" if isinstance(value, dict) or matrix else shown(value),
+            ]
         )
+        item.setToolTip(0, item.text(0))
         item.setToolTip(1, item.text(1))
         if parent:
             parent.addChild(item)
@@ -274,10 +101,13 @@ class ScenarioForm(W.QWidget):
         self.set_configuration(initial)
 
     def set_configuration(self, options: dict) -> None:
-        study = options["study"]
+        study = options.get("study")
+        if not isinstance(study, str) or study not in STUDIES:
+            raise ValueError("Tệp phải chỉ định một bài thử hợp lệ từ NB1 đến NB6.")
         index = self.study.findData(study)
-        if index < 0:
-            raise ValueError("Unknown study")
+        case = options.get("case")
+        if "case" in options and case not in self.session.cases(study):
+            raise ValueError("Kịch bản trong tệp không thuộc bài thử đã chọn.")
         defaults = self.session.defaults(study, options.get("case"))
         configuration = merged(defaults, options)
         if study == "NB6":
@@ -285,8 +115,23 @@ class ScenarioForm(W.QWidget):
                 if type(configuration[name]) in (int, float):
                     configuration[name] = [configuration[name]] * 2
         for name, default in defaults.items():
-            if type(default) is bool and type(configuration[name]) is not bool:
-                raise ValueError(f"{name} phải có giá trị bật hoặc tắt.")
+            value = configuration[name]
+            if type(default) is bool and type(value) is not bool:
+                raise ValueError(f"{field_label(name)} phải có giá trị bật hoặc tắt.")
+            if name in OPTIONS and (
+                not isinstance(value, str) or value not in self.choices(study, name)
+            ):
+                raise ValueError(
+                    f"{field_label(name)} không hợp lệ cho bài thử đã chọn."
+                )
+            if isinstance(default, list) and (
+                not isinstance(value, (list, tuple))
+                or len(value) != len(default)
+                or not all(map(finite_number, value))
+            ):
+                raise ValueError(
+                    f"{field_label(name)} phải gồm {len(default)} giá trị số hữu hạn."
+                )
         self.study.blockSignals(True)
         self.study.setCurrentIndex(index)
         self.study.blockSignals(False)
@@ -297,7 +142,7 @@ class ScenarioForm(W.QWidget):
         self.case.blockSignals(True)
         self.case.clear()
         for name in self.session.cases(study):
-            self.case.addItem(CASE_LABELS.get(name, name), name)
+            self.case.addItem(case_label(study, name), name)
         self.case.setCurrentIndex(max(0, self.case.findData(selected)))
         self.case.setVisible(self.case.count() > 0)
         self.case.blockSignals(False)
@@ -312,6 +157,20 @@ class ScenarioForm(W.QWidget):
         )
         self.set_editors(defaults, defaults)
 
+    @staticmethod
+    def choices(study: str, name: str) -> dict[str, str]:
+        choices = OPTIONS[name]
+        if name == "controller":
+            return {key: choices[key] for key in CONTROLLERS[study]}
+        if name == "mode":
+            keys = (
+                ("pose", "trajectory", "load_sweep", "inverse")
+                if study == "NB1–2"
+                else ("rolling", "compliant", "flight")
+            )
+            return {key: choices[key] for key in keys}
+        return choices
+
     def set_editors(self, configuration: dict, defaults: dict) -> None:
         self.editor.clear()
         body = W.QWidget()
@@ -324,19 +183,7 @@ class ScenarioForm(W.QWidget):
                 continue
             default = defaults[name]
             if name in OPTIONS:
-                choices = OPTIONS[name]
-                if name == "controller":
-                    choices = {
-                        k: choices[k] for k in CONTROLLERS[configuration["study"]]
-                    }
-                if name == "mode":
-                    mode_keys = (
-                        ("pose", "trajectory", "load_sweep", "inverse")
-                        if configuration["study"] == "NB1–2"
-                        else ("rolling", "compliant", "flight")
-                    )
-                    choices = {key: choices[key] for key in mode_keys}
-                widget = combo(choices)
+                widget = combo(self.choices(configuration["study"], name))
                 widget.setCurrentIndex(widget.findData(value))
             elif isinstance(default, bool):
                 widget = W.QCheckBox()
@@ -351,7 +198,7 @@ class ScenarioForm(W.QWidget):
                         "Không đổi" if name == "friction_change_s" else "Không áp dụng"
                     )
             widget.setObjectName(name)
-            title = FIELD_LABELS.get(name, name)
+            title = field_label(name)
             if isinstance(default, list) and name in (
                 "friction",
                 "friction_after",
@@ -384,7 +231,7 @@ class ScenarioForm(W.QWidget):
     def editor_text(value):
         if value is None:
             return ""
-        if isinstance(value, list):
+        if isinstance(value, (list, tuple)):
             return " / ".join(ScenarioForm.editor_text(v) for v in value)
         if type(value) is float:
             return np.format_float_positional(value, trim="-").replace(".", ",")
@@ -404,13 +251,19 @@ class ScenarioForm(W.QWidget):
                     text = widget.text().strip().replace(",", ".")
                     if isinstance(default, list):
                         value = [float(item.strip()) for item in text.split("/")]
+                        if len(value) != len(default) or not all(
+                            map(finite_number, value)
+                        ):
+                            raise ValueError()
                     elif name in INTEGER_SCENARIO_FIELDS:
                         value = int(text)
                     else:
-                        value = float(text) if text else None
+                        value = float(text) if text or default is not None else None
+                        if value is not None and not finite_number(value):
+                            raise ValueError()
                 except ValueError as exc:
                     raise ValueError(
-                        f"Giá trị không hợp lệ cho {FIELD_LABELS.get(name, name)}"
+                        f"Giá trị không hợp lệ cho {field_label(name)}."
                     ) from exc
             selection[name] = value
         return selection
@@ -480,6 +333,10 @@ class WorkbenchWindow(W.QMainWindow):
         content.addWidget(self.status)
         toolbar = W.QHBoxLayout()
         self.signal = W.QComboBox()
+        self.signal.setSizeAdjustPolicy(
+            W.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.signal.setMinimumContentsLength(16)
         self.signal.setToolTip("Chọn tín hiệu để vẽ.")
         self.signal.currentIndexChanged.connect(self.draw_plot)
         toolbar.addWidget(self.signal, 1)
@@ -492,6 +349,25 @@ class WorkbenchWindow(W.QMainWindow):
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.canvas.mpl_connect("button_press_event", self.plot_seek)
         content.addWidget(self.canvas, 1)
+        self.wheel_readouts = W.QGroupBox("Tiếp xúc và mô-men tại mẫu đang phát")
+        wheel_layout = W.QHBoxLayout(self.wheel_readouts)
+        self.wheel_columns = {}
+        for wheel_side, title, color in (
+            ("left", "Bánh trái", "#a74717"),
+            ("right", "Bánh phải", "#135b89"),
+        ):
+            column = W.QVBoxLayout()
+            heading = W.QLabel(title)
+            heading.setStyleSheet(f"font-weight: 600; color: {color}")
+            column.addWidget(heading)
+            values = W.QLabel()
+            values.setTextFormat(QtCore.Qt.PlainText)
+            values.setWordWrap(True)
+            column.addWidget(values)
+            wheel_layout.addLayout(column, 1)
+            self.wheel_columns[wheel_side] = values
+        self.wheel_readouts.hide()
+        content.addWidget(self.wheel_readouts)
         player = W.QHBoxLayout()
         self.play_button = button("Phát", self.toggle_play)
         player.addWidget(self.play_button)
@@ -532,7 +408,9 @@ class WorkbenchWindow(W.QMainWindow):
         self.signals = W.QTableWidget(0, 3)
         self.signals.setHorizontalHeaderLabels(["Tín hiệu", "Giá trị", "Đối chiếu"])
         self.signals.setColumnHidden(2, True)
-        self.signals.horizontalHeader().setStretchLastSection(True)
+        self.signals.horizontalHeader().setSectionResizeMode(0, W.QHeaderView.Stretch)
+        self.signals.setColumnWidth(1, 116)
+        self.signals.setColumnWidth(2, 116)
         self.signals.verticalHeader().hide()
         self.signals.setEditTriggers(W.QAbstractItemView.NoEditTriggers)
         self.signals.setAlternatingRowColors(True)
@@ -645,6 +523,12 @@ class WorkbenchWindow(W.QMainWindow):
         self.pause()
         self.scenario.set_configuration(run.configuration)
         self.run, self.comparison = run, None
+        self.wheel_readouts.setVisible(
+            any(
+                name in run.signals
+                for name in ("left_normal_force", "left_hip_static_effort")
+            )
+        )
         self.signals.setColumnHidden(2, True)
         self.slider.blockSignals(True)
         self.slider.setRange(0, len(run.time_s) - 1)
@@ -657,7 +541,10 @@ class WorkbenchWindow(W.QMainWindow):
                 "Bộ tham số": run.provenance.get("profile_name"),
                 "Nguồn": run.provenance.get("profile"),
                 "Phiên bản Git": run.provenance.get("git_commit"),
-                "Điều kiện": run.configuration,
+                "Điều kiện": {
+                    key: configuration_value(run.study, key, value)
+                    for key, value in run.configuration.items()
+                },
                 **run.metadata,
             },
         )
@@ -676,6 +563,7 @@ class WorkbenchWindow(W.QMainWindow):
                 ],
             )
             item.setData(0, ROLE, event["actual_s"])
+            item.setToolTip(0, item.text(0))
         status = f"{self.run_label(run)} · {shown(run.stop_reason)} · {decimal(run.time_s[-1])} s"
         if not self.session.matches_profile(run):
             status += " · Cần bộ tham số gốc để xem RViz và phương trình"
@@ -686,7 +574,7 @@ class WorkbenchWindow(W.QMainWindow):
     def run_label(run: RunRecord) -> str:
         control = run.configuration.get("controller")
         return CONTROLLER_LABELS.get(
-            control, CASE_LABELS.get(run.configuration.get("case"), run.study)
+            control, case_label(run.study, run.configuration.get("case"))
         )
 
     def scoped_signals(self, run: RunRecord) -> dict:
@@ -729,7 +617,10 @@ class WorkbenchWindow(W.QMainWindow):
         candidates = self.scoped_signals(self.run)
         for name, signal in candidates.items():
             if signal.plot_components() is not None:
-                self.signal.addItem(f"{label(name)} ({signal.unit})", name)
+                unit = unit_label(signal.unit)
+                self.signal.addItem(
+                    f"{label(name)} ({unit})" if unit else label(name), name
+                )
         if self.signal.findData(current) < 0:
             preferred = next(
                 (
@@ -798,7 +689,7 @@ class WorkbenchWindow(W.QMainWindow):
                 )
         self.axes.set_xlabel("Thời gian (s)")
         if key:
-            self.axes.set_ylabel(self.run.signals[key].unit)
+            self.axes.set_ylabel(unit_label(self.run.signals[key].unit))
         for axis in (self.axes.xaxis, self.axes.yaxis):
             axis.set_major_formatter(
                 FuncFormatter(lambda value, _pos: decimal(value, 6))
@@ -822,6 +713,9 @@ class WorkbenchWindow(W.QMainWindow):
         index = self.slider.value()
         time = self.run.time_s[index]
         self.time.setText(f"{decimal(time)} s")
+        if not self.wheel_readouts.isHidden():
+            for side, values in self.wheel_columns.items():
+                values.setText("\n".join(wheel_readout(self.run, index, side)))
         if hasattr(self, "cursor"):
             self.cursor.set_xdata([time, time])
             self.canvas.draw_idle()
@@ -845,10 +739,15 @@ class WorkbenchWindow(W.QMainWindow):
             if comparison_time[0] <= time <= comparison_time[-1]:
                 compare_index = bisect.bisect_right(comparison_time, time) - 1
         for row, (name, value) in enumerate(values.items()):
-            title = W.QTableWidgetItem(f"{label(name)} [{value.unit}]")
+            unit = unit_label(value.unit)
+            title = W.QTableWidgetItem(
+                f"{label(name)} [{unit}]" if unit else label(name)
+            )
             title.setData(ROLE, name)
             if value.frame:
-                title.setToolTip(value.frame)
+                title.setToolTip(title.text() + "\n" + frame_label(value.frame))
+            else:
+                title.setToolTip(title.text())
             self.signals.setItem(row, 0, title)
             sample = W.QTableWidgetItem(shown(value.values[index]))
             sample.setToolTip(sample.text())
@@ -864,7 +763,6 @@ class WorkbenchWindow(W.QMainWindow):
                 sample = W.QTableWidgetItem(shown(datum))
                 sample.setToolTip(sample.text())
                 self.signals.setItem(row, 2, sample)
-        self.signals.resizeColumnToContents(0)
 
     def open_viewer(self) -> None:
         if self.viewer:
@@ -952,7 +850,7 @@ class WorkbenchWindow(W.QMainWindow):
         label_text, ok = W.QInputDialog.getItem(
             self,
             "Đối chiếu điều khiển",
-            "Cùng kịch bản và seed",
+            "Dùng cùng kịch bản và giá trị khởi tạo bộ sinh nhiễu",
             list(names),
             editable=False,
         )

@@ -443,6 +443,7 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch, tmp_path):
     from tf2_ros import Buffer, TransformListener
     from visualization_msgs.msg import MarkerArray
     from workbench.qt_panel import ROLE, W, WorkbenchWindow, shown
+    from workbench.ui_text import wheel_readout
     from workbench.viewer import Viewer, replay_frame
 
     app = W.QApplication.instance() or W.QApplication([])
@@ -481,15 +482,34 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch, tmp_path):
         edited = window.scenario.configuration()
         assert edited["duration_s"] == 0.5
         assert edited["friction"] == [0.5, 0.5]
+        with pytest.raises(ValueError, match="Bộ điều khiển không hợp lệ"):
+            window.scenario.set_configuration(
+                {"study": "NB5", "controller": "weighted"}
+            )
+        assert window.scenario.configuration() == edited
+        window.scenario.findChild(W.QLineEdit, "duration_s").setText("NaN")
+        with pytest.raises(ValueError, match="Thời lượng"):
+            window.scenario.configuration()
         window.scenario.set_configuration(
             session.defaults("NB6", "left_grip") | {"duration_s": 0.45}
         )
         window.run_button.click()
         until(lambda: window.run.configuration["case"] == "left_grip")
         run = window.run
+        assert shown(["Active", "Paused"]) == "[ Đang hoạt động / Đang tạm dừng ]"
+        assert shown("Bánh trái · sliding") == "Bánh trái · Trượt"
+        event_titles = [
+            window.events.topLevelItem(i).text(0)
+            for i in range(window.events.topLevelItemCount())
+        ]
+        assert "Bánh trái · Trượt" in event_titles
         index = run.time_s.index(0.39)
         window.slider.setValue(index)
         assert window.time.text() == "0,39 s"
+        left_readout = window.wheel_columns["left"].text()
+        assert left_readout == "\n".join(wheel_readout(run, index, "left"))
+        assert "Lực pháp tuyến" in left_readout
+        assert "Mô-men hông" in left_readout
         left = window.root.child(1)
         for item, channel in (
             (left.child(1), "left_slip_speed"),
@@ -515,26 +535,43 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch, tmp_path):
             replay_frame(replace(run, signals=partial), index).wheels[0].force is None
         )
         window.viewer_timer.start()
+        contact = run.signals["left_contact_point"].values[index]
+
+        def matching_arrow():
+            if not markers:
+                return None
+            return next(
+                (
+                    marker
+                    for marker in markers[-1].markers
+                    if marker.id == 7
+                    and [marker.points[1].x, marker.points[1].y, marker.points[1].z]
+                    == pytest.approx(contact)
+                ),
+                None,
+            )
+
         until(
             lambda: (
                 stamps
                 and stamps[-1] == 0.39
                 and markers
-                and any(m.text == "NB6|0,39s" for m in markers[-1].markers)
+                and matching_arrow() is not None
             )
         )
-        arrow = next(m for m in markers[-1].markers if m.id == 7)
+        arrow = matching_arrow()
         assert (
             arrow.points[1].x,
             arrow.points[1].y,
             arrow.points[1].z,
-        ) == pytest.approx(run.signals["left_contact_point"].values[index])
+        ) == pytest.approx(contact)
         assert arrow.points[1].z - arrow.points[0].z == pytest.approx(
             0.004 * run.signals["left_normal_force"].values[index]
         )
-        assert all(marker.text.isascii() for marker in markers[-1].markers)
+        assert not any(marker.text for marker in markers[-1].markers)
         window.slider.setValue(window.slider.maximum())
         assert window.time.text() == "0,45 s"
+        assert "Mô-men bánh ở bước trước" in window.wheel_columns["left"].text()
 
         def matches_terminal_tf():
             for side in ("left", "right"):

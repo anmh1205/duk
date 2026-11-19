@@ -42,11 +42,12 @@ Hình chiếu động học dùng hình học chuẩn từ cấu hình chân.
 
 Bàn thử mở ca NB6 giảm độ bám bánh trái khi khởi động. Qt điều khiển kịch bản,
 biểu đồ và phát lại. RViz hiển thị robot theo cùng con trỏ thời gian, với
-tâm khối lượng, mô-men và vectơ lực tiếp xúc từ mẫu phát lại.
-Trong RViz, đầu mũi tên nằm tại điểm tiếp xúc và hướng theo lực tác dụng lên
-bánh. Tỷ lệ vẽ là 0,004 m/N. Nhãn 3D dùng `L/R` cho trái/phải, `Fn` cho lực
-pháp tuyến, `Th/Tw` cho mô-men hông/bánh. `prev` chỉ lệnh đã tích phân ở
-bước trước và `static` chỉ tải hông tĩnh.
+tâm khối lượng và vectơ lực tiếp xúc từ mẫu phát lại.
+Bảng **Tiếp xúc và mô-men tại mẫu đang phát** trong Qt hiện trạng thái tiếp
+xúc, lực pháp tuyến và mô-men từng bánh, từng hông bằng tiếng Việt. Màu cam
+và xanh dương tương ứng với vectơ lực của bánh trái và phải trong RViz.
+Đầu mũi tên nằm tại điểm tiếp xúc và hướng theo lực tác dụng lên bánh, với
+tỷ lệ vẽ 0,004 m/N.
 
 Trên máy Linux có Docker và X11/XWayland, dùng môi trường
 [mô phỏng Jazzy](../../docs/development/simulation-preview.md).

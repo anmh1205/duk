@@ -9,7 +9,7 @@ Visualization Manager:
     Frame Rate: 20
   Displays:
     - Class: rviz_default_plugins/Grid
-      Name: Ground grid
+      Name: Lưới mặt đất
       Enabled: true
       Cell Size: 0.1
       Plane Cell Count: 20
@@ -30,7 +30,7 @@ Visualization Manager:
       Collision Enabled: false
       Alpha: 1
     - Class: rviz_default_plugins/MarkerArray
-      Name: Lực, mô-men và CoM
+      Name: Lực tiếp xúc và tâm khối lượng
       Enabled: true
       Topic:
         Value: /duk/workbench/markers

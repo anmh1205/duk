@@ -16,15 +16,13 @@ from .kinematic_description import joint_positions
 
 NAMESPACE = "/duk/workbench"
 FRAME_PREFIX = "duk_workbench/"
+WHEEL_COLORS = ((0.74, 0.28, 0.10), (0.05, 0.40, 0.60))
 
 
 @dataclass(frozen=True)
 class ReplayWheel:
-    center: list[float] | None
     contact: list[float] | None
     force: list[float] | None
-    detail: str
-    hip_detail: str
 
 
 @dataclass(frozen=True)
@@ -35,7 +33,6 @@ class ReplayFrame:
     joints: list[float]
     wheels: tuple[ReplayWheel, ReplayWheel]
     center_of_mass: list[float] | None
-    detail: str
 
 
 def _point(values) -> Point:
@@ -71,19 +68,6 @@ class ReplayNode(Node):
             float, frame.orientation_xyzw
         )
 
-        def label(key, position, message, coordinate="world"):
-            markers.append(
-                self.marker(
-                    stamp,
-                    key,
-                    Marker.TEXT_VIEW_FACING,
-                    coordinate,
-                    position,
-                    text=message,
-                    scale=(0.0, 0.0, 0.019),
-                )
-            )
-
         # A terminal body pose can be valid even when the cut linkage tree
         # cannot be reconstructed outside its geometry domain.
         complete = True
@@ -100,11 +84,6 @@ class ReplayNode(Node):
             self.transforms.sendTransform(transform)
             self.joints.publish(joint)
         self.time.publish(Float64(data=frame.time_s))
-        label(
-            1,
-            [frame.position[0], frame.position[1], frame.position[2] + 0.17],
-            frame.detail,
-        )
         if frame.center_of_mass is not None:
             markers.append(
                 self.marker(
@@ -118,21 +97,6 @@ class ReplayNode(Node):
             )
         if complete:
             for index, wheel in enumerate(frame.wheels):
-                side = ("left", "right")[index]
-                outward = 1.0 if index == 0 else -1.0
-                label(
-                    3 + index,
-                    [0.0, 0.20 * outward, 0.045],
-                    wheel.hip_detail,
-                    FRAME_PREFIX + side + "_ab_frame",
-                )
-                if wheel.center is not None:
-                    x, y, z = wheel.center
-                    label(
-                        5 + index,
-                        [x, y + 0.24 * outward, z + 0.035],
-                        wheel.detail,
-                    )
                 if (
                     wheel.contact is not None
                     and wheel.force is not None
@@ -152,7 +116,7 @@ class ReplayNode(Node):
                         ),
                         _point(wheel.contact),
                     ]
-                    arrow.color.r, arrow.color.g, arrow.color.b = 0.82, 0.26, 0.04
+                    arrow.color.r, arrow.color.g, arrow.color.b = WHEEL_COLORS[index]
                     markers.append(arrow)
         self.markers.publish(MarkerArray(markers=markers))
         return complete
@@ -166,7 +130,6 @@ class ReplayNode(Node):
         position: list,
         *,
         scale: tuple,
-        text: str = "",
     ) -> Marker:
         marker = Marker(id=key, ns="simulation", type=kind, action=Marker.ADD)
         marker.header.stamp = stamp
@@ -180,5 +143,4 @@ class ReplayNode(Node):
             0.48,
             1.0,
         )
-        marker.text = text
         return marker

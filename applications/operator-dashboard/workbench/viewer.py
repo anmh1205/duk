@@ -18,7 +18,7 @@ from duk_description.simulation_replay import (
 )
 
 from .inputs import GEOMETRY, ROOT, Inputs
-from .records import RunRecord, decimal, finite_number
+from .records import RunRecord, finite_number
 
 CONFIG = ROOT / "robot/software/ros2_ws/src/duk_description/config/workbench.rviz"
 
@@ -44,11 +44,6 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
     if position is None or orientation is None or joints is None:
         return None
 
-    def reading(number, digits):
-        return (
-            decimal(number, digits).replace(" ", "") if finite_number(number) else "--"
-        )
-
     wheels = []
     for side in ("left", "right"):
         normal = value(side + "_normal_force")
@@ -62,44 +57,19 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
             )
             if horizontal is not None:
                 force = [*horizontal, normal]
-        mode = value(side + "_contact_mode")
-        wheel_effort = value(side + "_wheel_applied")
-        hip_effort = value(side + "_hip_applied")
-        # Use compact ASCII labels. RViz's Ogre text renderer gives spaces a
-        # wide advance at this glyph scale and cannot render localized units.
-        wheel_title, hip_title = "Tw", "Th"
-        if wheel_effort is None:
-            wheel_effort = value(side + "_wheel_preceding_effort")
-            if wheel_effort is not None:
-                wheel_title += "(prev)"
-        if hip_effort is None:
-            hip_effort = value(side + "_hip_preceding_effort")
-            if hip_effort is not None:
-                hip_title += "(prev)"
-            else:
-                hip_effort = value(side + "_hip_static_effort")
-                if hip_effort is not None:
-                    hip_title += "(static)"
-        label = "L" if side == "left" else "R"
-
         wheels.append(
             ReplayWheel(
-                vector(side + "_wheel_center", 3),
                 vector(side + "_contact_point", 3),
                 force,
-                f"{label}:{mode or '--'}\nFn={reading(normal, 2)}N\n{wheel_title}={reading(wheel_effort, 3)}Nm",
-                f"{label}:{hip_title}={reading(hip_effort, 3)}Nm",
             )
         )
-    time = run.time_s[index]
     return ReplayFrame(
-        time,
+        run.time_s[index],
         position,
         orientation,
         joints,
         (wheels[0], wheels[1]),
         vector("center_of_mass", 3),
-        f"{run.study.replace('–', '-')}|{reading(time, 6)}s",
     )
 
 
