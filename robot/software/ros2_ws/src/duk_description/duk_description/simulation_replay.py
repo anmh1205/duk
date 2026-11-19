@@ -80,7 +80,7 @@ class ReplayNode(Node):
                     coordinate,
                     position,
                     text=message,
-                    scale=(0.0, 0.0, 0.022),
+                    scale=(0.0, 0.0, 0.019),
                 )
             )
 
@@ -119,15 +119,20 @@ class ReplayNode(Node):
         if complete:
             for index, wheel in enumerate(frame.wheels):
                 side = ("left", "right")[index]
+                outward = 1.0 if index == 0 else -1.0
                 label(
                     3 + index,
-                    [0.0, 0.0, 0.045],
+                    [0.0, 0.20 * outward, 0.045],
                     wheel.hip_detail,
                     FRAME_PREFIX + side + "_ab_frame",
                 )
                 if wheel.center is not None:
                     x, y, z = wheel.center
-                    label(5 + index, [x, y, z + 0.10], wheel.detail)
+                    label(
+                        5 + index,
+                        [x, y + 0.24 * outward, z + 0.035],
+                        wheel.detail,
+                    )
                 if (
                     wheel.contact is not None
                     and wheel.force is not None
@@ -142,11 +147,12 @@ class ReplayNode(Node):
                         scale=(0.007, 0.018, 0.025),
                     )
                     arrow.points = [
-                        _point(wheel.contact),
                         _point(
-                            [x + 0.004 * f for x, f in zip(wheel.contact, wheel.force)]
+                            [x - 0.004 * f for x, f in zip(wheel.contact, wheel.force)]
                         ),
+                        _point(wheel.contact),
                     ]
+                    arrow.color.r, arrow.color.g, arrow.color.b = 0.82, 0.26, 0.04
                     markers.append(arrow)
         self.markers.publish(MarkerArray(markers=markers))
         return complete

@@ -43,6 +43,12 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
     joints = vector("state_joints", 4)
     if position is None or orientation is None or joints is None:
         return None
+
+    def reading(number, digits):
+        return (
+            decimal(number, digits).replace(" ", "") if finite_number(number) else "--"
+        )
+
     wheels = []
     for side in ("left", "right"):
         normal = value(side + "_normal_force")
@@ -59,27 +65,30 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
         mode = value(side + "_contact_mode")
         wheel_effort = value(side + "_wheel_applied")
         hip_effort = value(side + "_hip_applied")
-        wheel_title, hip_title = "τ bánh", "τ hông"
+        # Use compact ASCII labels. RViz's Ogre text renderer gives spaces a
+        # wide advance at this glyph scale and cannot render localized units.
+        wheel_title, hip_title = "Tw", "Th"
         if wheel_effort is None:
             wheel_effort = value(side + "_wheel_preceding_effort")
             if wheel_effort is not None:
-                wheel_title += " bước trước"
+                wheel_title += "(prev)"
         if hip_effort is None:
             hip_effort = value(side + "_hip_preceding_effort")
             if hip_effort is not None:
-                hip_title += " bước trước"
+                hip_title += "(prev)"
             else:
                 hip_effort = value(side + "_hip_static_effort")
                 if hip_effort is not None:
-                    hip_title += " tĩnh"
-        label = "Trái" if side == "left" else "Phải"
+                    hip_title += "(static)"
+        label = "L" if side == "left" else "R"
+
         wheels.append(
             ReplayWheel(
                 vector(side + "_wheel_center", 3),
                 vector(side + "_contact_point", 3),
                 force,
-                f"{label} · {mode or '—'} · {decimal(normal, 2)} N\n{wheel_title} {decimal(wheel_effort, 3)} N·m",
-                f"{hip_title} {decimal(hip_effort, 3)} N·m",
+                f"{label}:{mode or '--'}\nFn={reading(normal, 2)}N\n{wheel_title}={reading(wheel_effort, 3)}Nm",
+                f"{label}:{hip_title}={reading(hip_effort, 3)}Nm",
             )
         )
     time = run.time_s[index]
@@ -90,7 +99,7 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
         joints,
         (wheels[0], wheels[1]),
         vector("center_of_mass", 3),
-        f"{run.study} · {decimal(time)} s",
+        f"{run.study.replace('–', '-')}|{reading(time, 6)}s",
     )
 
 

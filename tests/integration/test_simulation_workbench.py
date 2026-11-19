@@ -520,15 +520,19 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch, tmp_path):
                 stamps
                 and stamps[-1] == 0.39
                 and markers
-                and any(m.text == "NB6 · 0,39 s" for m in markers[-1].markers)
+                and any(m.text == "NB6|0,39s" for m in markers[-1].markers)
             )
         )
         arrow = next(m for m in markers[-1].markers if m.id == 7)
         assert (
-            arrow.points[0].x,
-            arrow.points[0].y,
-            arrow.points[0].z,
+            arrow.points[1].x,
+            arrow.points[1].y,
+            arrow.points[1].z,
         ) == pytest.approx(run.signals["left_contact_point"].values[index])
+        assert arrow.points[1].z - arrow.points[0].z == pytest.approx(
+            0.004 * run.signals["left_normal_force"].values[index]
+        )
+        assert all(marker.text.isascii() for marker in markers[-1].markers)
         window.slider.setValue(window.slider.maximum())
         assert window.time.text() == "0,45 s"
 
