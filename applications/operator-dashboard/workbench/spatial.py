@@ -121,18 +121,53 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
         trace.terminal_pose[0],
         frame="upper CoM about axle",
     )
-    add("model_speed", "m/s", "body", trace.true_and_estimated_speed[:, 0])
+    true_speed, estimate = trace.true_and_estimated_speed.T
+    end_speed = (
+        kin_end.forward
+        @ (kin_end.linear[model.wheels] @ terminal.velocity).mean(axis=0)
+        if kin_end
+        else None
+    )
+    add("model_speed", "m/s", "body", true_speed, end_speed, frame="heading")
     add(
         "estimated_speed",
         "m/s",
         "body",
-        np.where(trace.sensor_valid, trace.true_and_estimated_speed[:, 1], np.nan),
+        np.where(trace.sensor_valid, estimate, np.nan),
+        frame="heading",
     )
-    add("odometry_speed", "m/s", "body", trace.sensor[:, 0])
+    add(
+        "speed_estimation_error",
+        "m/s",
+        "body",
+        np.where(trace.sensor_valid, estimate - true_speed, np.nan),
+        frame="heading",
+    )
+    add("odometry_speed", "m/s", "body", trace.sensor[:, 0], frame="heading")
+    add(
+        "slip_detected",
+        "1",
+        "control",
+        [
+            bool(d) if ok else None
+            for d, ok in zip(trace.slip_detected, trace.sensor_valid)
+        ],
+    )
+    add(
+        "yaw_rate",
+        "rad/s",
+        "body",
+        trace.pose_rate[:, 3],
+        kin_end.task_jacobian[3] @ terminal.velocity if kin_end else None,
+    )
     add("accelerometer", "m/s²", "body", trace.sensor[:, 1])
     add("sensor_valid", "1", "robot", trace.sensor_valid)
-    for index, (reference, unit) in enumerate(
-        (("height", "m"), ("yaw_rate", "rad/s"), ("speed", "m/s"))
+    for index, (reference, unit, measured) in enumerate(
+        (
+            ("height", "m", trace.pose[:, 1]),
+            ("yaw_rate", "rad/s", trace.pose_rate[:, 3]),
+            ("speed", "m/s", true_speed),
+        )
     ):
         add(
             f"requested_{reference}",
@@ -147,6 +182,12 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
             "body",
             trace.effective_reference[:, index],
             held=True,
+        )
+        add(
+            f"{reference}_tracking_error",
+            unit,
+            "body",
+            trace.effective_reference[:, index] - measured,
         )
     for index, side in enumerate(SIDES):
         hip, wheel = side + ".hip", side + ".wheel"
@@ -164,17 +205,14 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
             trace.velocity[:, index + 6],
             terminal.velocity[index + 6],
         )
+        lower, upper = np.deg2rad(settings["hip_limits_deg"])
+        q = trace.joints[:, index]
         add(
             side + "_hip_travel_margin",
             "rad",
             hip,
-            np.min(
-                np.abs(
-                    trace.joints[:, index, None]
-                    - np.deg2rad(settings["hip_limits_deg"])
-                ),
-                axis=1,
-            ),
+            np.minimum(q - lower, upper - q),
+            min(terminal.joints[index] - lower, upper - terminal.joints[index]),
         )
         add(
             side + "_wheel_center",
@@ -306,6 +344,7 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
         ("capacity_reason", trace.capacity_reason, "1"),
         ("feature_status", trace.feature_status, "1"),
         ("feature_amount", trace.feature_amount, "1"),
+        ("feature_intent", trace.feature_intent, "1"),
         ("task_names", trace.task_names, "1"),
         ("task_scales", trace.task_scales, "mixed"),
         ("task_targets", trace.task_targets, "mixed"),
@@ -356,6 +395,7 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
                     },
                 },
                 "velocity_order": VELOCITY_ORDER,
+                "feature_order": ["bounce", "level", "anchor", "heading"],
                 "fallback_state_order": ["v [m/s]", "lean [rad]", "leaṅ [rad/s]"],
                 "fallback_gain": trace.fallback_gain,
                 "fallback_a": trace.fallback_a,
@@ -366,7 +406,9 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
     )
 
 
-def spatial_equations(inputs: Inputs, run: RunRecord, index: int) -> dict:
+def spatial_equations(
+    inputs: Inputs, run: RunRecord, index: int, scope: str = "robot"
+) -> dict:
     data = {name: signal.values[index] for name, signal in run.signals.items()}
     state = SpatialState(
         np.array(data["position"]),
@@ -378,6 +420,30 @@ def spatial_equations(inputs: Inputs, run: RunRecord, index: int) -> dict:
         terms = spatial_model(inputs, run.configuration).evaluate(state)
     except LinkageError:
         return {"Trạng thái": "Cơ cấu vượt miền giải tại mẫu dừng."}
+    side, _, part = scope.partition(".")
+    if side in SIDES and part in ("wheel", "hip"):
+        i = SIDES.index(side)
+        row = (8 if part == "wheel" else 6) + i
+        result = {
+            "Phương trình": "Mᵢ a + bᵢ = Sᵢ τ + (Jᵀ F)ᵢ",
+            "Tọa độ": VELOCITY_ORDER[row],
+            "Thứ tự vận tốc": VELOCITY_ORDER,
+            "Mᵢ": terms.mass[row],
+            "bᵢ [N·m]": terms.bias[row],
+            "Sᵢ [hông T/P, bánh T/P]": terms.actuation[row],
+            "J[:, :, i] [bánh T/P, x/y/z]": terms.kinematics.contact[:, :, row],
+        }
+        if part == "wheel":
+            result.update(
+                {
+                    "J tiếp xúc [x/y/z]": terms.kinematics.contact[i],
+                    "J̇ v [m/s²]": terms.contact_bias[i],
+                    "J v [m/s]": terms.kinematics.contact[i] @ state.velocity,
+                    "Mặt đỡ [m]": run.configuration["support_levels_m"][i],
+                    "Luật tiếp xúc": inputs.fixture["whole_body"]["contact_law"],
+                }
+            )
+        return plain(result)
     return plain(
         {
             "Phương trình": "M a + b = S τ + Jᵀ F",

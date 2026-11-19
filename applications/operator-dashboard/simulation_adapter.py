@@ -44,7 +44,13 @@ def _integer(value: object, label: str, upper: int) -> int:
 class DashboardSimulation:
     """Translate JSON to the core's explicit SI inputs and return labeled traces."""
 
-    def __init__(self, repository: Path, profile_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        repository: Path,
+        profile_path: Path | None = None,
+        *,
+        profile_bytes: bytes | None = None,
+    ) -> None:
         geometry_path = repository / "robot/config/physical/duk_leg_geometry.json"
         fixture_path = (
             profile_path or repository / "research/experiments/duk-v3/synthetic.json"
@@ -54,7 +60,9 @@ class DashboardSimulation:
         )
         self.geometry = load_leg_geometry_json(geometry_path)
         bench = KinematicBench(self.geometry)
-        fixture = json.loads(fixture_path.read_bytes())
+        if profile_bytes is None:
+            profile_bytes = fixture_path.read_bytes()
+        fixture = json.loads(profile_bytes)
         if (
             fixture["schema_version"] != 1
             or fixture["status"] != "synthetic_research_only"
@@ -101,7 +109,7 @@ class DashboardSimulation:
         self.max_lean = study["fall_angle_deg"]
         self.inputs = {
             "profile": fixture["status"],
-            "fixture_sha256": sha256(fixture_path.read_bytes()).hexdigest(),
+            "fixture_sha256": sha256(profile_bytes).hexdigest(),
             "geometry_sha256": sha256(geometry_path.read_bytes()).hexdigest(),
         }
         self.config = {

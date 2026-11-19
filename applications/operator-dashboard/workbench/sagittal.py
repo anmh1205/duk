@@ -21,6 +21,7 @@ from duk_core.modeling.rolling_reduction import (
     symmetric_forward_wheel_input,
 )
 from duk_core.modeling.trajectories import HipTrajectory
+from duk_core.simulation import sample_times
 from duk_core.simulation.height import compare_height_policies
 from duk_core.simulation.planar import simulate_planar
 
@@ -91,7 +92,7 @@ class SagittalStudies:
 
     @cached_property
     def balance(self) -> DashboardSimulation:
-        return DashboardSimulation(ROOT, self.inputs.profile_path)
+        return DashboardSimulation(ROOT, profile_bytes=self.inputs.profile_bytes)
 
     def defaults(self, study: str, case: str | None = None) -> dict:
         data = self.inputs.fixture
@@ -152,6 +153,8 @@ class SagittalStudies:
             "initial_lean_deg": 0.0,
             "drop_height_m": 0.1 if case == "flight" else 0.0,
             "friction": [friction, friction],
+            "friction_after": [friction, friction],
+            "friction_change_s": None,
             "total_wheel_torque_N_m": 1.8 if case == "slip" else 0.10,
             "wheel_torque_ramp_N_m_s": 8.5 if case == "rolling_limit" else 0.0,
             "feedback": "gated",
@@ -244,6 +247,12 @@ class SagittalStudies:
             )
         }
         outcome = trace["outcome"]
+        error = plain(np.asarray(trace["speed_estimate"]) - state[:, 1])
+        if trace["sensed_lean"][-1] is None:
+            # The endpoint follows integration of the preceding command.
+            error[-1] = None
+            signals["estimated_speed"].values[-1] = None
+        signals["speed_estimation_error"] = Signal("m/s", "body", error, "world x")
         return RunRecord(
             "NB4",
             config,
@@ -297,6 +306,10 @@ class SagittalStudies:
             initial[1] -= preload / law.stiffness
         static = model.static_hip_effort(lift.configuration, [[0.0, preload]] * 2)
         friction = vector(config["friction"], "friction", 2, 0)
+        friction_after = vector(config["friction_after"], "friction_after", 2, 0)
+        switch = config["friction_change_s"]
+        if switch is not None:
+            switch = number(switch, "friction_change_s", 0)
         torque = number(config["total_wheel_torque_N_m"], "total_wheel_torque_N_m")
         ramp = number(config["wheel_torque_ramp_N_m_s"], "wheel_torque_ramp_N_m_s")
         max_step = number(config["max_step_s"], "max_step_s", 0.00001, 1)
@@ -315,16 +328,15 @@ class SagittalStudies:
             )
             return command
 
-        times = np.minimum(
-            np.arange(math.ceil(duration / period) + 1) * period, duration
-        )
         trace = simulate_planar(
             model,
             initial,
-            np.unique(times),
+            sample_times(duration, period),
             effort,
             friction,
             mode=mode,
+            friction_change_s=switch,
+            friction_after=friction_after if switch is not None else None,
             contact_law=law,
             max_step=max_step,
             rtol=1e-7,
@@ -364,18 +376,29 @@ class SagittalStudies:
         }
         add("model_speed", "m/s", "body", truth)
         add("estimated_speed", "m/s", "body", estimate[feedback])
+        add(
+            "speed_estimation_error",
+            "m/s",
+            "body",
+            np.asarray(estimate[feedback]) - truth,
+        )
         add("sensed_acceleration", "m/s²", "body", accel)
         add("odometry_speed", "m/s", "body", wheel_speed.mean(axis=1))
         add("slip_detected", "1", "control", [r.slip_detected for r in gated])
         add("state_7dof", "mixed", "robot", states, "sagittal")
         add("rate_7dof", "mixed/s", "robot", rates, "sagittal")
+        add("acceleration_7dof", "mixed/s²", "robot", trace.acceleration, "sagittal")
         add("energy", "J", "body", trace.energy)
         add("force_admissible", "1", "control", trace.force_admissible)
         wheel_centers = [
             [signals[side + "_wheel_center"].values[i] for side in SIDES]
             for i in range(len(times))
         ]
-        events = []
+        events = (
+            []
+            if switch is None
+            else [event("Đổi độ bám", switch, switch if switch in times else None)]
+        )
         for i, side in enumerate(SIDES):
             wheel = side + ".wheel"
             modes = [
@@ -402,9 +425,12 @@ class SagittalStudies:
                 ("spin_absolute", "rad", states[:, i + 5]),
                 ("spin_relative_rate", "rad/s", trace.relative_spin[:, i]),
                 ("wheel_applied", "N·m", trace.applied[:, i + 2]),
-                ("friction", "1", [friction[i]] * len(times)),
+                ("encoder_rate", "rad/s", encoder[:, i]),
             ):
                 add(side + "_" + name, unit, wheel, values)
+            signals[side + "_friction"] = Signal(
+                "1", wheel, plain(trace.friction[:, i]), held=True
+            )
             add(
                 side + "_contact_point",
                 "m",
@@ -416,6 +442,13 @@ class SagittalStudies:
                 "world",
             )
             add(side + "_hip_angle", "rad", side + ".hip", states[:, i + 3])
+            add(side + "_hip_rate", "rad/s", side + ".hip", rates[:, i + 3])
+            add(
+                side + "_hip_acceleration",
+                "rad/s²",
+                side + ".hip",
+                trace.acceleration[:, i + 3],
+            )
             add(side + "_hip_applied", "N·m", side + ".hip", trace.applied[:, i])
         events.append(event(trace.termination, None, times[-1]))
         return RunRecord(
@@ -472,6 +505,7 @@ class SagittalStudies:
                 number(config["initial_lean_deg"], "initial_lean_deg")
             ),
             horizon=integer(config["mpc_horizon"], "mpc_horizon", 1, 50),
+            policies=(method,),
         )[method]
         time = trace.time.tolist()
         end = float(trace.terminal_time)
@@ -527,6 +561,17 @@ class SagittalStudies:
         add("linear_a", "mixed", "control", sampled(trace.linear_a))
         add("linear_b", "mixed", "control", sampled(trace.linear_b))
         add("gain", "mixed", "control", sampled(trace.gain))
+        add("nominal_state", "mixed", "control", sampled(trace.nominal_state))
+        add(
+            "tracking_error",
+            "mixed",
+            "control",
+            sampled(trace.nominal_state - trace.state),
+        )
+        add(
+            "torque_interval", "N·m", "wheel_pair", sampled(trace.torque_interval), True
+        )
+        add("force_constraints", "mixed", "control", sampled(trace.force_constraints))
         add(
             "nominal_force_constraints",
             "mixed",
@@ -589,6 +634,23 @@ class SagittalStudies:
                         "hip_envelope": inputs.fixture["hip_envelope"],
                     },
                     "coordinate_order": PLANAR_ORDER,
+                    "feedback_state_order": [
+                        "x axle [m]",
+                        "v axle [m/s]",
+                        "lean relative to initial pitch offset [rad]",
+                        "lean rate [rad/s]",
+                    ],
+                    "constraint_order": [
+                        "+hip L [N·m]",
+                        "+hip R [N·m]",
+                        "−hip L [N·m]",
+                        "−hip R [N·m]",
+                        "+traction L [N]",
+                        "+traction R [N]",
+                        "−traction L [N]",
+                        "−traction R [N]",
+                        "−total normal [N]",
+                    ],
                     "Q": q_weight,
                     "R": r_weight,
                     "assumptions": "Prescribed symmetric hip trajectory and rigid rolling. Wheel command is total +x torque.",
@@ -597,10 +659,34 @@ class SagittalStudies:
         )
 
 
-def planar_equations(inputs: Inputs, run: RunRecord, index: int) -> dict:
+def planar_equations(
+    inputs: Inputs, run: RunRecord, index: int, scope: str = "robot"
+) -> dict:
     state = run.signals["state_7dof"].values[index]
     rate = run.signals["rate_7dof"].values[index]
     terms = inputs.planar.evaluate(state, rate)
+    side, _, part = scope.partition(".")
+    if side in SIDES and part in ("wheel", "hip"):
+        i = SIDES.index(side)
+        row = (5 if part == "wheel" else 3) + i
+        result = {
+            "Phương trình": "Mᵢ q̈ + bᵢ = Sᵢ τ + (Jᵀ F)ᵢ",
+            "Tọa độ": PLANAR_ORDER[row],
+            "Thứ tự q": PLANAR_ORDER,
+            "Mᵢ": terms.mass[row],
+            "bᵢ [N·m]": terms.bias[row],
+            "Sᵢ [hông T/P, bánh T/P]": terms.input[row],
+            "J[:, i] [Nz T/P, Fx T/P]": terms.contact[:, row],
+        }
+        if part == "wheel":
+            result.update(
+                {
+                    "J tiếp xúc [z/x]": terms.contact[[i, i + 2]],
+                    "J̇ q̇ [m/s²]": terms.contact_bias[[i, i + 2]],
+                    "Chế độ áp dụng": run.configuration.get("mode", "rolling"),
+                }
+            )
+        return plain(result)
     return plain(
         {
             "Phương trình": "M q̈ + b = S τ + Jᵀ F",

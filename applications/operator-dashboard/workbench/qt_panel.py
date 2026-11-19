@@ -15,7 +15,8 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from python_qt_binding import QtCore, QtWidgets
 
-from .inputs import INTEGER_SCENARIO_FIELDS, merged
+from .inputs import INTEGER_SCENARIO_FIELDS, Inputs, merged
+from .kinematics import POINTS, SEGMENTS
 from .records import RunRecord, decimal, save_json
 from .session import CONTROLLER_LABELS, CONTROLLERS, STUDIES, Workbench
 
@@ -48,6 +49,7 @@ CASE_LABELS = {
     "stationary": "Giữ độ cao",
 }
 FIELD_LABELS = {
+    "controller": "Bộ điều khiển",
     "period_s": "Chu kỳ mẫu (s)",
     "duration_s": "Thời lượng (s)",
     "substeps": "Bước tích phân mỗi mẫu",
@@ -83,6 +85,31 @@ FIELD_LABELS = {
     "anchor": "Về điểm neo",
     "delay_samples": "Trễ lệnh (mẫu)",
     "trajectory": "Quỹ đạo",
+    "max_step_s": "Bước tích phân tối đa (s)",
+    "initial_axle_m_s": "Vận tốc trục ban đầu (m/s)",
+    "drop_height_m": "Độ cao thả ban đầu (m)",
+    "total_wheel_torque_N_m": "Mô-men tổng hai bánh (N·m)",
+    "wheel_torque_ramp_N_m_s": "Tốc độ tăng mô-men tổng (N·m/s)",
+    "accel_noise_m_s2": "Độ lệch chuẩn nhiễu gia tốc (m/s²)",
+    "encoder_noise_rad_s": "Độ lệch chuẩn nhiễu encoder (rad/s)",
+    "accel_noise": "Độ lệch chuẩn nhiễu gia tốc (m/s²)",
+    "pitch_noise": "Độ lệch chuẩn nhiễu góc nghiêng (rad)",
+    "traction_budget": "Độ bám giả định để giới hạn lệnh",
+    "lift_s": "Thời gian nâng (s)",
+    "target_q_deg": "Góc hông đích (°)",
+    "total_wheel_limit_N_m": "Giới hạn mô-men tổng hai bánh (N·m)",
+    "mpc_horizon": "Chân trời MPC (mẫu)",
+    "feature_start_s": "Bắt đầu nhiệm vụ phụ (s)",
+    "bounce_off_s": "Kết thúc dao động độ cao (s)",
+    "bounce_amplitude_m": "Biên độ dao động độ cao (m)",
+    "bounce_hz": "Tần số dao động độ cao (Hz)",
+    "turn_end_s": "Kết thúc lệnh quay (s)",
+    "drive_end_s": "Kết thúc lệnh vận tốc (s)",
+    "reference_capacity": "Hệ số giới hạn tham chiếu",
+    "hip_capacity": "Hệ số giới hạn mô-men hông",
+    "impulse_at_s": "Thời điểm nhiễu động (s)",
+    "velocity_impulse_m_s": "Bước đổi vận tốc x/y/z (m/s)",
+    "angular_velocity_impulse_rad_s": "Bước đổi vận tốc góc x/y/z (rad/s)",
 }
 OPTIONS = {
     "controller": CONTROLLER_LABELS,
@@ -102,6 +129,7 @@ OPTIONS = {
     "mode": {
         "pose": "Tư thế và đạo hàm",
         "trajectory": "Quỹ đạo đặt",
+        "load_sweep": "Quét góc và tải hông tĩnh",
         "inverse": "Động học nghịch",
         "rolling": "Lăn cứng",
         "compliant": "Đàn hồi",
@@ -120,6 +148,13 @@ SIGNAL_LABELS = {
     "estimated_speed": "Vận tốc ước lượng",
     "odometry_speed": "Vận tốc odometry",
     "accelerometer": "Gia tốc cảm biến",
+    "speed_estimation_error": "Sai số vận tốc ước lượng",
+    "speed_tracking_error": "Sai số bám vận tốc",
+    "yaw_rate_tracking_error": "Sai số bám tốc độ quay",
+    "height_tracking_error": "Sai số bám độ cao",
+    "yaw_rate": "Tốc độ quay",
+    "torque_interval": "Khoảng mô-men khả thi",
+    "force_constraints": "Dư lượng ràng buộc lực thực tế",
     "normal_force": "Lực pháp tuyến",
     "tangential_force": "Lực tiếp tuyến",
     "slip_speed": "Tốc độ trượt",
@@ -132,6 +167,8 @@ SIGNAL_LABELS = {
     "hip_applied": "Mô-men hông áp dụng",
     "hip_static_effort": "Mô-men hông tĩnh",
     "hip_limit": "Mô-men hông cho phép",
+    "envelope_rate": "Tốc độ khảo sát đường bao",
+    "hip_saturation": "Bão hòa mô-men hông",
     "hip_requested": "Mô-men hông yêu cầu",
     "hip_preceding_effort": "Mô-men hông giữ ở bước trước",
     "wheel_applied": "Mô-men bánh áp dụng",
@@ -279,7 +316,8 @@ class ScenarioForm(W.QWidget):
         self.editor.clear()
         body = W.QWidget()
         layout = W.QFormLayout(body)
-        layout.setRowWrapPolicy(W.QFormLayout.WrapLongRows)
+        layout.setRowWrapPolicy(W.QFormLayout.WrapAllRows)
+        layout.setFieldGrowthPolicy(W.QFormLayout.AllNonFixedFieldsGrow)
         self.scroll.setWidget(body)
         for name, value in configuration.items():
             if name in ("study", "case"):
@@ -293,7 +331,7 @@ class ScenarioForm(W.QWidget):
                     }
                 if name == "mode":
                     mode_keys = (
-                        ("pose", "trajectory", "inverse")
+                        ("pose", "trajectory", "load_sweep", "inverse")
                         if configuration["study"] == "NB1–2"
                         else ("rolling", "compliant", "flight")
                     )
@@ -309,10 +347,38 @@ class ScenarioForm(W.QWidget):
                 if isinstance(default, list):
                     widget.setToolTip("Các thành phần cách nhau bằng dấu /.")
                 if default is None:
-                    widget.setPlaceholderText("Tự động")
+                    widget.setPlaceholderText(
+                        "Không đổi" if name == "friction_change_s" else "Không áp dụng"
+                    )
             widget.setObjectName(name)
-            layout.addRow(FIELD_LABELS.get(name, name), widget)
+            title = FIELD_LABELS.get(name, name)
+            if isinstance(default, list) and name in (
+                "friction",
+                "friction_after",
+                "support_levels_m",
+            ):
+                title += " · trái / phải"
+            layout.addRow(title, widget)
             self.editor[name] = (widget, default)
+        if configuration["study"] == "NB1–2":
+            self.editor["mode"][0].currentIndexChanged.connect(self.kinematic_fields)
+            self.kinematic_fields()
+
+    def kinematic_fields(self) -> None:
+        mode = self.editor["mode"][0].currentData()
+        has_path = mode in ("trajectory", "load_sweep")
+        for name in ("left_final_deg", "right_final_deg", "duration_s", "period_s"):
+            self.editor[name][0].setEnabled(has_path)
+        for name in ("inverse_target_mm", "inverse_side"):
+            self.editor[name][0].setEnabled(mode == "inverse")
+        self.editor["joint_accel_rad_s2"][0].setEnabled(not has_path)
+        rate = self.editor["joint_rate_rad_s"][0]
+        rate.setEnabled(mode != "trajectory")
+        rate.setToolTip(
+            "Tốc độ dùng để tra đường bao mô-men tại mỗi góc."
+            if mode == "load_sweep"
+            else "Vận tốc hông trái / phải."
+        )
 
     @staticmethod
     def editor_text(value):
@@ -386,6 +452,7 @@ class WorkbenchWindow(W.QMainWindow):
             session.inputs.parameter_info["profile_name"] + " · Tham số tổng hợp"
         )
         header.addWidget(self.profile)
+        header.addWidget(button("Chạy với bộ tham số…", self.open_profile))
         header.addStretch()
         self.viewer_button = button("Mở RViz", self.open_viewer)
         header.addWidget(self.viewer_button)
@@ -521,7 +588,7 @@ class WorkbenchWindow(W.QMainWindow):
             node(limb, "Khớp hông", side + ".hip")
             node(limb, "Bánh", side + ".wheel")
             linkage = node(limb, "Cơ cấu bốn khâu", side + ".linkage")
-            for part in ("AB", "BC", "CD", "AD", "BO", "CO", *"ABCDHO"):
+            for part in (*SEGMENTS, *POINTS):
                 node(
                     linkage,
                     part if len(part) > 1 else "Điểm " + part,
@@ -543,6 +610,7 @@ class WorkbenchWindow(W.QMainWindow):
         self.pause()
         self.finished = callback
         self.pending = self.worker.submit(operation)
+        self.scenario.setEnabled(False)
         self.run_button.setEnabled(False)
         self.status.setText("Đang tính toán…")
 
@@ -550,6 +618,7 @@ class WorkbenchWindow(W.QMainWindow):
         if self.pending is None or not self.pending.done():
             return
         future, self.pending = self.pending, None
+        self.scenario.setEnabled(True)
         self.run_button.setEnabled(True)
         try:
             self.finished(future.result())
@@ -625,10 +694,20 @@ class WorkbenchWindow(W.QMainWindow):
         frame = self.frame.currentData()
         base, separator, part = scope.rpartition(".")
         related = set()
-        if separator and len(part) == 2 and all(point in "ABCDHO" for point in part):
+        if separator and part in SEGMENTS:
             related.update(base + "." + point for point in part)
         if scope in ("left.linkage", "right.linkage"):
             related.add(scope.replace(".linkage", ".hip"))
+
+        def visible_frame(signal):
+            if frame == "all":
+                return True
+            if signal.frame.startswith("world"):
+                return frame == "world"
+            if signal.frame in ("body", "body x/z", "leg x/z", "carrier"):
+                return frame == "body"
+            return True
+
         return {
             key: value
             for key, value in run.signals.items()
@@ -638,11 +717,7 @@ class WorkbenchWindow(W.QMainWindow):
                 or value.scope.startswith(scope + ".")
                 or value.scope in related
             )
-            and (
-                frame == "all"
-                or value.frame not in ("leg x/z", "body x/z", "world")
-                or (value.frame == "world") == (frame == "world")
-            )
+            and visible_frame(value)
         }
 
     def object_changed(self, *_args) -> None:
@@ -688,8 +763,7 @@ class WorkbenchWindow(W.QMainWindow):
             if not run or key not in run.signals:
                 continue
             signal = run.signals[key]
-            unit = self.run.signals[key].unit
-            if signal.unit != unit or signal.frame != self.run.signals[key].frame:
+            if not signal.same_quantity(self.run.signals[key]):
                 continue
             axes = signal.plot_components()
             if axes is None:
@@ -703,6 +777,10 @@ class WorkbenchWindow(W.QMainWindow):
                 if signal.held and len(values) > 1 and np.isnan(values[-1]):
                     values[-1] = values[-2]
                 name = self.run_label(run)
+                if self.comparison and self.run_label(
+                    self.comparison
+                ) == self.run_label(self.run):
+                    name += " · " + ("Gốc", "Đối chiếu")[index]
                 if len(axes) > 1:
                     name = f"{name} · {component + 1}"
                 self.axes.plot(
@@ -712,7 +790,9 @@ class WorkbenchWindow(W.QMainWindow):
                     color=COLOR[index],
                     alpha=1 - component / (1.6 * len(axes)),
                     label=name,
-                    drawstyle="steps-post" if signal.held else "default",
+                    drawstyle="steps-post"
+                    if signal.held or any(type(v) is bool for v in signal.values)
+                    else "default",
                     marker="o" if len(times) == 1 else None,
                     linestyle=("-", "--", ":", "-.")[component % 4],
                 )
@@ -770,19 +850,20 @@ class WorkbenchWindow(W.QMainWindow):
             if value.frame:
                 title.setToolTip(value.frame)
             self.signals.setItem(row, 0, title)
-            self.signals.setItem(row, 1, W.QTableWidgetItem(shown(value.values[index])))
+            sample = W.QTableWidgetItem(shown(value.values[index]))
+            sample.setToolTip(sample.text())
+            self.signals.setItem(row, 1, sample)
             if self.comparison:
                 comparison = self.comparison.signals.get(name)
-                matching = comparison is not None and (
-                    comparison.frame,
-                    comparison.unit,
-                ) == (value.frame, value.unit)
+                matching = comparison is not None and value.same_quantity(comparison)
                 datum = (
                     comparison.values[compare_index]
                     if matching and compare_index is not None
                     else None
                 )
-                self.signals.setItem(row, 2, W.QTableWidgetItem(shown(datum)))
+                sample = W.QTableWidgetItem(shown(datum))
+                sample.setToolTip(sample.text())
+                self.signals.setItem(row, 2, sample)
         self.signals.resizeColumnToContents(0)
 
     def open_viewer(self) -> None:
@@ -925,6 +1006,45 @@ class WorkbenchWindow(W.QMainWindow):
             "Nạp kịch bản",
             lambda path: self.scenario.set_configuration(read_object(path)),
         )
+
+    def open_profile(self) -> None:
+        self.read_file("Chạy với bộ tham số tổng hợp", self.run_with_profile)
+
+    def run_with_profile(self, path: Path) -> None:
+        options = self.scenario.configuration()
+        study, case = options["study"], options.get("case")
+        defaults = self.session.defaults(study, case)
+        overrides = {
+            key: value for key, value in options.items() if value != defaults[key]
+        }
+        current = self.run
+
+        def simulate():
+            session = Workbench(Inputs(path))
+            # A matching saved record already contains its fully resolved inputs.
+            config = (
+                options
+                if current and session.matches_profile(current)
+                else session.defaults(study, case) | overrides
+            )
+            return session, session.run(config)
+
+        def show(result):
+            session, run = result
+            reopen = self.viewer is not None
+            if reopen:
+                self.viewer_timer.stop()
+                self.viewer.close()
+                self.viewer = None
+            self.session = self.scenario.session = session
+            self.profile.setText(
+                session.inputs.parameter_info["profile_name"] + " · Tham số tổng hợp"
+            )
+            self.set_run(run)
+            if reopen:
+                self.open_viewer()
+
+        self.submit(simulate, show)
 
     def open_run(self) -> None:
         self.read_file("Mở kết quả", lambda path: self.set_run(RunRecord.load(path)))

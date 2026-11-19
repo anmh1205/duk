@@ -11,11 +11,12 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from duk_core.modeling import build_planar_biped_model, load_leg_geometry_json
+from duk_core.modeling import build_planar_biped_model
 from duk_core.modeling.hip_load import LinearTorqueSpeed
+from duk_core.modeling.leg_linkage import geometry_from_mapping
 from duk_core.modeling.planar_numeric import NumericPlanarBiped
 
-from .records import decimal, finite_number
+from .records import decimal, finite_number, reject_json_constant
 
 ROOT = Path(__file__).resolve().parents[3]
 GEOMETRY = ROOT / "robot/config/physical/duk_leg_geometry.json"
@@ -60,7 +61,7 @@ def merged(defaults: dict, options: dict) -> dict:
 
 
 def read_object(path: Path) -> dict:
-    data = json.loads(path.read_bytes())
+    data = json.loads(path.read_bytes(), parse_constant=reject_json_constant)
     if not isinstance(data, dict):
         raise ValueError(f"Expected a JSON object in {path.name}")
     return data
@@ -76,20 +77,26 @@ def fingerprints(root: Path, folder: str) -> dict[str, str]:
 class Inputs:
     def __init__(self, profile_path: Path = PROFILE) -> None:
         self.profile_path = profile_path
-        self.fixture = read_object(profile_path)
+        self.profile_bytes = profile_path.read_bytes()
+        self.fixture = json.loads(
+            self.profile_bytes, parse_constant=reject_json_constant
+        )
         if (
-            self.fixture.get("schema_version") != 1
+            not isinstance(self.fixture, dict)
+            or type(self.fixture.get("schema_version")) is not int
+            or self.fixture.get("schema_version") != 1
             or self.fixture.get("status") != "synthetic_research_only"
         ):
             raise ValueError(
                 "Expected a versioned synthetic research parameter profile"
             )
-        self.geometry = load_leg_geometry_json(GEOMETRY)
+        geometry_bytes = GEOMETRY.read_bytes()
+        self.geometry = geometry_from_mapping(json.loads(geometry_bytes))
         self.parameter_info = {
             "profile": self.fixture["status"],
             "profile_name": profile_path.name,
-            "profile_sha256": sha256(profile_path.read_bytes()).hexdigest(),
-            "geometry_sha256": sha256(GEOMETRY.read_bytes()).hexdigest(),
+            "profile_sha256": sha256(self.profile_bytes).hexdigest(),
+            "geometry_sha256": sha256(geometry_bytes).hexdigest(),
         }
 
     @cached_property
@@ -173,6 +180,8 @@ class Inputs:
             "duration_s": (0.001, 60.0),
             "hip_capacity": (0, 1),
             "reference_capacity": (0, 1),
+            "drive_speed_m_s": (-math.inf, math.inf),
+            "turn_rate_rad_s": (-math.inf, math.inf),
         }
         for name, default in defaults.items():
             value = config[name]

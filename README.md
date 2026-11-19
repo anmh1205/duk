@@ -9,6 +9,7 @@ DUK is a wheel-legged biped robot project. This monorepo is organized to support
 | Full repository structure and artifact ownership | [Repository layout](docs/architecture/repository-layout.md) |
 | Engineering documentation | [Documentation index](docs/README.md) |
 | Robot hardware, software and simulation | [Robot](robot/README.md) |
+| NB1–NB6 simulation workbench with Qt and RViz | [Run and inspect a scenario](applications/operator-dashboard/README.md#bàn-thử-qt-và-rviz) |
 | Numerical models and interactive development | [Robotics core](robot/software/core/README.md) |
 | Scientific work and publications | [Research](research/README.md) |
 | Operator-facing and external applications | [Applications](applications/README.md) |

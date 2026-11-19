@@ -79,6 +79,26 @@ mẫu đang xem. Tab **Sự kiện** ghi mốc yêu cầu và mốc thực tế,
 mẫu tương ứng. NB4 có các tín hiệu của mô hình gộp trong Qt. Các mô hình có
 đầy đủ tư thế và góc cơ cấu phát lại trong RViz.
 
+Trong NB1–NB2, chọn **Quét góc và tải hông tĩnh** rồi đặt góc đầu và cuối từng
+chân. Nhập tốc độ khảo sát trái/phải vào ô vận tốc góc. Mỗi mẫu lấy mô-men
+tĩnh tại góc đang xem và tra đường bao động cơ ở tốc độ khảo sát đó. Vận tốc
+và gia tốc chuyển động hình học vẫn lấy từ quỹ đạo quintic. Chọn một thanh
+như **BC** để xem hai đầu thanh, chiều dài, hướng và các đạo hàm theo góc hông.
+
+Trong NB3, **Thời điểm đổi độ bám** để trống sẽ giữ độ bám ban đầu suốt ca.
+Khi nhập thời điểm, nhập thêm hai hệ số sau thay đổi theo thứ tự trái/phải.
+Core ghi mẫu ngay lúc đổi, kể cả giữa hai mốc lấy mẫu. Trạng thái liên tục qua
+mốc này. Lực và hệ số tại mốc dùng điều kiện mới. Nếu lực yêu cầu vượt miền
+lăn cứng, mốc đó cũng là thời điểm dừng. NB6 áp dụng thay đổi ở mẫu lệnh đầu
+tiên từ thời điểm yêu cầu trở đi.
+
+Trong NB5, **Khoảng mô-men khả thi** áp dụng cho mô-men tổng của cặp bánh.
+Các dư lượng lực ở lệnh áp dụng phải nhỏ hơn hoặc bằng 0 trong dung sai số.
+Thứ tự và đơn vị của từng thành phần nằm trong tab **Tham số**.
+Sai số bám dùng tham chiếu có hiệu lực trừ giá trị mô hình. Sai số ước lượng
+vận tốc dùng giá trị ước lượng trừ vận tốc mô hình. Mẫu thiếu hiển thị bằng
+dấu gạch ngang.
+
 ### Ca nghiệm thu
 
 Mở ca [giảm độ bám bánh trái](../../robot/simulation/scenarios/whole-body-left-grip.json).
@@ -127,10 +147,17 @@ phép thử độ nhạy theo khối lượng, CoM, quán tính, cơ cấu chấ
 tiếp xúc. Hai mặt đỡ NB6 là hai mặt ngang độc lập. Các giả thiết về trọng lực,
 đĩa bánh, độ bám và vị trí khớp nằm trong core và bộ tham số.
 
+Trong Qt, **Chạy với bộ tham số…** nạp hồ sơ JSON rồi chạy bài thử đang chọn.
+Các ô có giá trị khác mặc định được giữ lại. Các ô đang ở giá trị mặc định
+lấy giá trị từ hồ sơ mới. Khi hồ sơ khớp với ca đang xem, biểu mẫu giữ toàn bộ
+giá trị. Kết quả ghi tên và SHA-256 của hồ sơ đã dùng.
+
 ### Phạm vi của Gazebo và dữ liệu thật
 
-[Gazebo preview](../../docs/development/simulation-preview.md) xác minh mô
-hình hình học, TF và đồng hồ mô phỏng. Đối chiếu động lực học cần mô hình
+[Gazebo preview](../../docs/development/simulation-preview.md) đối chiếu tâm
+và bán kính hai bánh cùng các đầu thanh từ cảnh Gazebo đang chạy với nghiệm
+Python tại góc đã chọn, với dung sai 0,000001 m. Kiểm tra cũng đọc TF và đồng
+hồ mô phỏng. Đối chiếu động lực học cần mô hình
 Gazebo đã khai báo ràng buộc vòng kín, trục/mô-men, va chạm và luật tiếp xúc.
 Trình tự đối chiếu theo kế hoạch là hình học, tải tĩnh, chuyển động đặt, tiếp
 xúc và vòng kín trên các điều kiện ban đầu chung. Dốc và địa hình biến thiên

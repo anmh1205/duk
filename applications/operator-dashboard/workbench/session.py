@@ -8,7 +8,13 @@ from typing import Any
 from duk_core.modeling.leg_linkage import LinkageError
 
 from .inputs import Inputs
-from .kinematics import kinematic_defaults, kinematic_record, linkage_equations
+from .kinematics import (
+    POINTS,
+    SEGMENTS,
+    kinematic_defaults,
+    kinematic_record,
+    linkage_equations,
+)
 from .records import REPLAY_TOLERANCE, RunRecord, plain
 from .sagittal import HEIGHT_POLICIES, PLANAR_PRESETS, SagittalStudies, planar_equations
 from .spatial import spatial_equations, spatial_record
@@ -92,21 +98,46 @@ class Workbench:
             return {
                 "Nguồn": "Mở lại với bộ tham số gốc để tính các ma trận tại mẫu này."
             }
-        if scope.startswith(("left", "right")):
-            side = scope.split(".")[0]
+        side, _, component = scope.partition(".")
+        if side in ("left", "right"):
+            if run.study == "NB4":
+                return {
+                    "Mô hình": "NB4 gộp hai bánh và giữ cố định hông. Chọn Cặp bánh để xem mô hình tuyến tính."
+                }
             q = run.signals.get(side + "_hip_angle")
-            if q and run.study in ("NB1–2", "NB6", "NB3", "NB5"):
-                point = scope.split(".")[-1] if ".linkage." in scope else None
-                if point not in tuple("ABCDHO"):
-                    point = None
+            if q and (component not in ("hip", "wheel") or run.study == "NB1–2"):
+                part = component.removeprefix("linkage.")
+                if component in ("hip", "wheel"):
+                    part = "O"
                 try:
-                    return plain(linkage_equations(self.inputs, q.values[index], point))
+                    data = linkage_equations(
+                        self.inputs,
+                        q.values[index],
+                        part if part in (*POINTS, *SEGMENTS) else None,
+                    )
                 except LinkageError:
                     return {"Trạng thái": "Cơ cấu vượt miền giải tại mẫu dừng."}
+                if run.study == "NB1–2" and component == "hip":
+                    data.update(
+                        {
+                            "Tải tĩnh": "τ = ∂V/∂q − J_Oᵀ F, với J_O tính bằng m/rad",
+                            "Đường bao": "τ_max = η τ_stall max(0, 1 − |q̇|/ω₀)",
+                            "Tải tại O [N]": run.signals[
+                                side + "_axle_external_load"
+                            ].values[index],
+                            "Mô-men tĩnh [N·m]": run.signals[
+                                side + "_hip_static_effort"
+                            ].values[index],
+                            "Mô-men cho phép [N·m]": run.signals[
+                                side + "_hip_limit"
+                            ].values[index],
+                        }
+                    )
+                return plain(data)
         if run.study == "NB6":
-            return spatial_equations(self.inputs, run, index)
+            return spatial_equations(self.inputs, run, index, scope)
         if run.study in ("NB3", "NB5"):
-            return planar_equations(self.inputs, run, index)
+            return planar_equations(self.inputs, run, index, scope)
         if run.study == "NB4":
             return run.metadata["linear_model"]
         return {
@@ -120,7 +151,7 @@ def _same(a: Any, b: Any) -> bool:
         return a.keys() == b.keys() and all(
             _same(value, b[key]) for key, value in a.items()
         )
-    if isinstance(a, list) and isinstance(b, list):
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
     if type(a) in (int, float) and type(b) in (int, float):
         return isclose(
@@ -136,16 +167,13 @@ def check_replay(original: RunRecord, repeated: RunRecord) -> None:
         raise ValueError("Replay changed the time or sample count")
     if not _same(original.events, repeated.events):
         raise ValueError("Replay changed an event")
+    if not _same(original.metadata, repeated.metadata):
+        raise ValueError("Replay changed the study parameters or model diagnostics")
     if original.signals.keys() != repeated.signals.keys():
         raise ValueError("Replay changed the recorded signals")
     for name, trace in original.signals.items():
         other = repeated.signals[name]
-        if (trace.unit, trace.scope, trace.frame, trace.held) != (
-            other.unit,
-            other.scope,
-            other.frame,
-            other.held,
-        ):
+        if not trace.same_quantity(other):
             raise ValueError(f"Replay changed the signal metadata for {name}")
         if name != "solver_seconds" and not _same(trace.values, other.values):
             raise ValueError(f"Replay differs beyond tolerance for {name}")

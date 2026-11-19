@@ -87,6 +87,8 @@ class Signal:
         available = [sample for sample in self.values if sample is not None]
         if not available:
             return None
+        if all(type(sample) is bool for sample in available):
+            return np.array([self.values], dtype=float)
         if all(finite_number(sample) for sample in available):
             return np.array([self.values], dtype=float)
         first = available[0]
@@ -109,6 +111,14 @@ class Signal:
             ],
             dtype=float,
         ).T
+
+    def same_quantity(self, other: Signal) -> bool:
+        return (self.unit, self.scope, self.frame, self.held) == (
+            other.unit,
+            other.scope,
+            other.frame,
+            other.held,
+        )
 
 
 @dataclass(frozen=True)
@@ -183,7 +193,11 @@ class RunRecord:
             payload = json.loads(
                 path.read_text(encoding="utf-8"), parse_constant=reject_json_constant
             )
-            if not isinstance(payload, dict) or payload.pop("schema_version") != SCHEMA:
+            if (
+                not isinstance(payload, dict)
+                or type(payload.get("schema_version")) is not int
+                or payload.pop("schema_version") != SCHEMA
+            ):
                 raise ValueError("Unsupported run format")
             payload["signals"] = {
                 name: Signal(**value) for name, value in payload["signals"].items()

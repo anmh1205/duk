@@ -18,7 +18,7 @@ from duk_description.simulation_replay import (
 )
 
 from .inputs import GEOMETRY, ROOT, Inputs
-from .records import RunRecord, decimal
+from .records import RunRecord, decimal, finite_number
 
 CONFIG = ROOT / "robot/software/ros2_ws/src/duk_description/config/workbench.rviz"
 
@@ -28,18 +28,34 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
         signal = run.signals.get(name)
         return signal.values[index] if signal else None
 
-    if value("position") is None or value("state_joints") is None:
+    def vector(name, length):
+        data = value(name)
+        if (
+            isinstance(data, list)
+            and len(data) == length
+            and all(map(finite_number, data))
+        ):
+            return data
+        return None
+
+    position = vector("position", 3)
+    orientation = vector("orientation_xyzw", 4)
+    joints = vector("state_joints", 4)
+    if position is None or orientation is None or joints is None:
         return None
     wheels = []
     for side in ("left", "right"):
         normal = value(side + "_normal_force")
         tangent = value(side + "_tangential_force")
         force = None
-        if normal is not None and tangent is not None:
-            force = [
-                *(tangent if isinstance(tangent, list) else [tangent, 0.0]),
-                normal,
-            ]
+        if finite_number(normal):
+            horizontal = (
+                [tangent, 0.0]
+                if finite_number(tangent)
+                else vector(side + "_tangential_force", 2)
+            )
+            if horizontal is not None:
+                force = [*horizontal, normal]
         mode = value(side + "_contact_mode")
         wheel_effort = value(side + "_wheel_applied")
         hip_effort = value(side + "_hip_applied")
@@ -54,11 +70,13 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
                 hip_title += " bước trước"
             else:
                 hip_effort = value(side + "_hip_static_effort")
+                if hip_effort is not None:
+                    hip_title += " tĩnh"
         label = "Trái" if side == "left" else "Phải"
         wheels.append(
             ReplayWheel(
-                value(side + "_wheel_center"),
-                value(side + "_contact_point"),
+                vector(side + "_wheel_center", 3),
+                vector(side + "_contact_point", 3),
                 force,
                 f"{label} · {mode or '—'} · {decimal(normal, 2)} N\n{wheel_title} {decimal(wheel_effort, 3)} N·m",
                 f"{hip_title} {decimal(hip_effort, 3)} N·m",
@@ -67,11 +85,11 @@ def replay_frame(run: RunRecord, index: int) -> ReplayFrame | None:
     time = run.time_s[index]
     return ReplayFrame(
         time,
-        value("position"),
-        value("orientation_xyzw"),
-        value("state_joints"),
+        position,
+        orientation,
+        joints,
         (wheels[0], wheels[1]),
-        value("center_of_mass"),
+        vector("center_of_mass", 3),
         f"{run.study} · {decimal(time)} s",
     )
 

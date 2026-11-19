@@ -52,6 +52,8 @@ def test_replay_validates_signal_metadata_and_uses_tolerance_for_event_time(
         ),
     )
     force = small_record.signals["force"]
+    with pytest.raises(ValueError, match="diagnostics"):
+        check_replay(small_record, replace(small_record, metadata={"gain": [1.0]}))
     for change, message in (
         ({"unit": "N·m"}, "signal metadata"),
         ({"frame": "body"}, "signal metadata"),
@@ -119,6 +121,14 @@ def test_left_grip_parity_and_comparison(session, left_grip, tmp_path):
     assert left_grip.time_s[:-1] == trace.time.tolist()
     assert left_grip.time_s[-1] == trace.terminal_time == config["duration_s"]
     np.testing.assert_allclose(
+        left_grip.signals["speed_estimation_error"].values[:-1],
+        trace.true_and_estimated_speed[:, 1] - trace.true_and_estimated_speed[:, 0],
+    )
+    np.testing.assert_allclose(
+        left_grip.signals["yaw_rate_tracking_error"].values[:-1],
+        trace.effective_reference[:, 1] - trace.pose_rate[:, 3],
+    )
+    np.testing.assert_allclose(
         left_grip.signals["position"].values[-1], trace.terminal_state.position
     )
     at_change = next(
@@ -170,6 +180,8 @@ def test_left_grip_parity_and_comparison(session, left_grip, tmp_path):
     assert session.equations(left_grip, at_change, "left.linkage.O")["O"][
         "dp/dq [mm/rad]"
     ]
+    wheel = session.equations(left_grip, at_change, "left.wheel")
+    np.testing.assert_allclose(wheel["J v [m/s]"], trace.contact_speed[at_change, 0])
     record = tmp_path / "run.json"
     left_grip.save(record)
     loaded = RunRecord.load(record)
@@ -265,6 +277,91 @@ def test_prescribed_world_wheel_derivatives(session):
         )
 
 
+def test_static_load_sweep_preserves_speed_and_partial_sample_interval(session):
+    run = session.run(
+        {
+            "study": "NB1–2",
+            "mode": "load_sweep",
+            "left_q_deg": 95,
+            "left_final_deg": 105,
+            "joint_rate_rad_s": [2, -3],
+            "duration_s": 0.14,
+            "period_s": 0.05,
+        }
+    )
+    np.testing.assert_allclose(run.time_s, [0, 0.05, 0.1, 0.14], atol=1e-15)
+    assert run.signals["left_hip_rate"].values[0] == 0
+    np.testing.assert_allclose(
+        run.signals["left_hip_limit"].values, session.inputs.motor.joint_limit(2)
+    )
+    np.testing.assert_allclose(
+        run.signals["right_hip_limit"].values, session.inputs.motor.joint_limit(-3)
+    )
+    assert (
+        run.signals["left_hip_static_effort"].values[0]
+        != run.signals["left_hip_static_effort"].values[-1]
+    )
+    inspected = session.equations(run, 2, "left.linkage.BC")
+    assert "A" not in inspected
+    assert inspected["BC"]["Chiều dài [mm]"] == pytest.approx(
+        session.inputs.geometry.bc_mm
+    )
+    np.testing.assert_allclose(
+        inspected["BC"]["Vectơ trong hệ chân [mm]"],
+        np.subtract(run.signals["left_C"].values[2], run.signals["left_B"].values[2]),
+    )
+
+
+def test_nb3_off_grid_grip_event_and_signed_nb6_inputs(session):
+    switch = 0.0123
+    run = session.run(
+        {
+            "study": "NB3",
+            "case": "rolling",
+            "friction_change_s": switch,
+            "friction_after": [0, 0.65],
+        }
+    )
+    assert run.stop_reason == "rolling_limit" and run.time_s[-1] == switch
+    assert event("Đổi độ bám", switch, switch) in run.events
+    unreached = session.run(
+        {"study": "NB3", "case": "flight", "friction_change_s": 1.0}
+    )
+    assert event("Đổi độ bám", 1, None) in unreached.events
+    run = session.run(
+        {
+            "study": "NB6",
+            "case": "drive_release",
+            "drive_speed_m_s": -0.03,
+            "turn_rate_rad_s": -0.1,
+            "duration_s": 0.02,
+        }
+    )
+    assert run.signals["requested_speed"].values[0] == -0.03
+    assert run.signals["requested_yaw_rate"].values[0] == -0.1
+
+
+def test_nb4_reproduction_uses_loaded_profile_bytes(tmp_path):
+    path = tmp_path / "alternate.json"
+    profile = read_object(PROFILE)
+    path.write_text(json.dumps(profile))
+    session = Workbench(Inputs(path))
+    profile["v2_balance"]["radius_m"] *= 2
+    path.write_text(json.dumps(profile))
+    run = session.run({"study": "NB4", "feedback": "truth"})
+    assert (
+        run.metadata["parameters"]["plant"]["radius_m"]
+        == session.inputs.fixture["v2_balance"]["radius_m"]
+    )
+    assert run.signals["speed_estimation_error"].values[:-1] == [0.0] * (
+        len(run.time_s) - 1
+    )
+    assert run.signals["speed_estimation_error"].values[-1] is None
+    saved = tmp_path / "run.json"
+    run.save(saved)
+    session.verify_replay(RunRecord.load(saved))
+
+
 def test_sagittal_contact_termination_and_height_policies(session):
     roll, slide, landing, limit = [
         session.run({"study": "NB3", "case": case})
@@ -286,6 +383,10 @@ def test_sagittal_contact_termination_and_height_policies(session):
     assert mpc.time_s == fixed.time_s
     assert mpc.signals["linear_a"].values[0]
     assert mpc.signals["applied"].values != fixed.signals["applied"].values
+    for i, effort in enumerate(mpc.signals["applied"].values[:-1]):
+        low, high = mpc.signals["torque_interval"].values[i]
+        assert low <= effort <= high
+        assert max(mpc.signals["force_constraints"].values[i]) <= 1e-8
 
 
 @pytest.mark.parametrize(
@@ -333,7 +434,7 @@ def test_viewer_start_failure_cleans_up_ros_and_publisher(session, monkeypatch):
 
 
 @pytest.mark.ros
-def test_qt_run_button_and_final_ros_tf(session, monkeypatch):
+def test_qt_run_button_and_final_ros_tf(session, monkeypatch, tmp_path):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     rclpy = pytest.importorskip("rclpy")
     pytest.importorskip("python_qt_binding")
@@ -341,8 +442,8 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch):
     from std_msgs.msg import Float64
     from tf2_ros import Buffer, TransformListener
     from visualization_msgs.msg import MarkerArray
-    from workbench.qt_panel import W, WorkbenchWindow
-    from workbench.viewer import Viewer
+    from workbench.qt_panel import ROLE, W, WorkbenchWindow, shown
+    from workbench.viewer import Viewer, replay_frame
 
     app = W.QApplication.instance() or W.QApplication([])
     window = WorkbenchWindow(
@@ -389,6 +490,30 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch):
         index = run.time_s.index(0.39)
         window.slider.setValue(index)
         assert window.time.text() == "0,39 s"
+        left = window.root.child(1)
+        for item, channel in (
+            (left.child(1), "left_slip_speed"),
+            (left.child(2), "left_hip_applied"),
+            (window.root.child(0), "height"),
+        ):
+            window.objects.setCurrentItem(item)
+            row = next(
+                i
+                for i in range(window.signals.rowCount())
+                if window.signals.item(i, 0).data(ROLE) == channel
+            )
+            assert window.signals.item(row, 1).text() == shown(
+                run.signals[channel].values[index]
+            )
+            assert window.time.text() == "0,39 s"
+        partial = dict(run.signals)
+        partial.pop("orientation_xyzw")
+        assert replay_frame(replace(run, signals=partial), index) is None
+        partial = dict(run.signals)
+        partial.pop("left_tangential_force")
+        assert (
+            replay_frame(replace(run, signals=partial), index).wheels[0].force is None
+        )
         window.viewer_timer.start()
         until(
             lambda: (
@@ -425,7 +550,32 @@ def test_qt_run_button_and_final_ros_tf(session, monkeypatch):
             return stamps[-1] == run.time_s[-1]
 
         until(matches_terminal_tf)
+        monkeypatch.setattr(
+            W.QInputDialog, "getItem", lambda *a, **kw: ("HQP theo thứ tự", True)
+        )
+        window.compare_button.click()
+        until(lambda: window.comparison is not None)
+        assert window.comparison.configuration == run.configuration | {
+            "controller": "hierarchical"
+        }
+        assert len(window.axes.get_legend_handles_labels()[0]) == 2
+        # Switch to an alternative profile from the same panel that ran the acceptance case.
+        window.viewer_timer.stop()
+        window.viewer = None
+        path = tmp_path / "motor.json"
+        profile = read_object(PROFILE)
+        profile["hip_envelope"]["stall_torque_N_m"] *= 0.5
+        path.write_text(json.dumps(profile))
+        window.scenario.set_configuration({"study": "NB1–2", "left_q_deg": 100})
+        window.run_with_profile(path)
+        until(lambda: window.run.study == "NB1–2")
+        assert window.run.configuration["left_q_deg"] == 100
+        assert window.run.provenance["profile_name"] == "motor.json"
+        assert window.run.signals["left_hip_limit"].values[0] == pytest.approx(
+            session.inputs.motor.joint_limit(0) / 2
+        )
     finally:
         listener.unregister()
         node.destroy_node()
         window.close()
+        viewer.close()

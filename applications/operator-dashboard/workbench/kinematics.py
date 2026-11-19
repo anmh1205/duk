@@ -18,11 +18,13 @@ from duk_core.modeling.leg_differential import (
 )
 from duk_core.modeling.leg_linkage import LinkageError, leg_jacobian
 from duk_core.modeling.trajectories import HipTrajectory
+from duk_core.simulation import sample_times
 
 from .inputs import Inputs, merged, number, vector
 from .records import RunRecord, Signal, plain
 
 POINTS = "ABCDHO"
+SEGMENTS = ("AB", "BC", "CD", "AD", "BO", "CO")
 SIDES = ("left", "right")
 
 
@@ -52,9 +54,9 @@ def kinematic_defaults(inputs: Inputs) -> dict:
 def kinematic_record(inputs: Inputs, options: dict) -> RunRecord:
     config = merged(kinematic_defaults(inputs), options)
     mode = config["mode"]
-    if mode not in ("pose", "trajectory", "inverse"):
+    if mode not in ("pose", "trajectory", "load_sweep", "inverse"):
         raise ValueError(
-            "Choose forward pose, prescribed trajectory or inverse wheel target"
+            "Choose forward pose, prescribed trajectory, static load sweep or inverse wheel target"
         )
     geometry = inputs.geometry
     limits = tuple(map(math.degrees, geometry.geometric_linkage_angle_limits_rad()))
@@ -101,11 +103,8 @@ def kinematic_record(inputs: Inputs, options: dict) -> RunRecord:
         )
         for s, q in zip(SIDES, angles)
     ]
-    times = (
-        np.linspace(0, duration, math.ceil(duration / period) + 1).tolist()
-        if mode == "trajectory"
-        else [0.0]
-    )
+    has_path = mode in ("trajectory", "load_sweep")
+    times = sample_times(duration, period) if has_path else [0.0]
     signals = {}
 
     def add(name, unit, scope, value, frame=""):
@@ -116,7 +115,7 @@ def kinematic_record(inputs: Inputs, options: dict) -> RunRecord:
     for time in times:
         motion = (
             [path.evaluate(time) for path in paths]
-            if mode == "trajectory"
+            if has_path
             else zip(angles, rates, accels)
         )
         left, right = legs = [sample_bench_leg(geometry, *values) for values in motion]
@@ -180,7 +179,9 @@ def kinematic_record(inputs: Inputs, options: dict) -> RunRecord:
             leg_value("double_area_error", "mm²", leg.carrier_area_error_mm2)
             leg_value("loop_sine", "1", leg.loop_sine)
             leg_value("hip_static_effort", "N·m", needed[index], "hip")
-            bound = inputs.motor.joint_limit(leg.q_dot_rad_s)
+            envelope_rate = rates[index] if mode == "load_sweep" else leg.q_dot_rad_s
+            bound = inputs.motor.joint_limit(envelope_rate)
+            leg_value("envelope_rate", "rad/s", envelope_rate, "hip")
             leg_value("hip_limit", "N·m", bound, "hip")
             leg_value(
                 "hip_utilization",
@@ -205,6 +206,17 @@ def kinematic_record(inputs: Inputs, options: dict) -> RunRecord:
                 "body x/z",
             )
             leg_value("wheel_velocity_world", "mm/s", velocity[index], "wheel", "world")
+            leg_value(
+                "wheel_center_body",
+                "m",
+                [
+                    (leg.pose.o[0] + mounts[index][0]) / 1000,
+                    lateral[index],
+                    (leg.pose.o[1] + mounts[index][1]) / 1000,
+                ],
+                "wheel",
+                "body",
+            )
             leg_value(
                 "wheel_accel_world", "mm/s²", acceleration[index], "wheel", "world"
             )
@@ -247,11 +259,11 @@ def kinematic_record(inputs: Inputs, options: dict) -> RunRecord:
     )
 
 
-def linkage_equations(inputs: Inputs, q: float, point: str | None = None) -> dict:
+def linkage_equations(inputs: Inputs, q: float, part: str | None = None) -> dict:
     sample = sample_bench_leg(inputs.geometry, q)
     jac = leg_jacobian(inputs.geometry, sample.pose)
     second = leg_second_derivative(inputs.geometry, sample.pose)
-    return {
+    data = {
         "Quy ước": "q = ∠(AB → DA), CCW; x phải, z lên; A là gốc",
         "Phương trình": "θ_AB = θ_DA − q; ṗ = J q̇; p̈ = J q̈ + (d²p/dq²) q̇²",
         "q [rad]": q,
@@ -266,9 +278,22 @@ def linkage_equations(inputs: Inputs, q: float, point: str | None = None) -> dic
                 "dp/dq [mm/rad]": jac.point(name),
                 "d²p/dq² [mm/rad²]": second.point(name),
             }
-            for name in point or POINTS
+            for name in part or POINTS
         },
     }
+    if part in SEGMENTS:
+        start, end = part
+        delta = np.subtract(sample.pose.point(end), sample.pose.point(start))
+        data[part] = {
+            "Vectơ trong hệ chân [mm]": delta,
+            "Chiều dài [mm]": np.linalg.norm(delta),
+            "Góc từ +x về +z [rad]": math.atan2(delta[1], delta[0]),
+            "d(vectơ)/dq [mm/rad]": np.subtract(jac.point(end), jac.point(start)),
+            "d²(vectơ)/dq² [mm/rad²]": np.subtract(
+                second.point(end), second.point(start)
+            ),
+        }
+    return data
 
 
 def linkage_signals(inputs: Inputs, signals: dict[str, Signal]) -> dict[str, Signal]:
