@@ -95,12 +95,13 @@ class ReferencePolicy:
         ]
         phase = 2 * np.pi * c["bounce_hz"] * max(0.0, t - c["feature_start_s"])
         omega = 2 * np.pi * c["bounce_hz"]
-        wave = c.get("height_offset_m", 0.0) + c["bounce_amplitude_m"] * np.sin(phase)
+        oscillation = c["bounce_amplitude_m"] * np.sin(phase)
+        wave = c.get("height_offset_m", 0.0) + oscillation
         wave_rate = c["bounce_amplitude_m"] * omega * np.cos(phase)
         amount_rate = self.features[0].rate
         h_ref = home + amounts[0] * wave
         h_rate = amounts[0] * wave_rate + amount_rate * wave
-        h_acc = -amounts[0] * omega**2 * wave + 2 * amount_rate * wave_rate
+        h_acc = -amounts[0] * omega**2 * oscillation + 2 * amount_rate * wave_rate
         requested_yaw_rate = c["turn_rate_rad_s"] if t < c["turn_end_s"] else 0.0
         requested_speed = c["drive_speed_m_s"] if t < c["drive_end_s"] else 0.0
         speed_ref, yaw_rate_ref = (

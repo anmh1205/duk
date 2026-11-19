@@ -67,6 +67,7 @@ class WholeBodyTrace:
     center_of_mass: np.ndarray
     sensor: np.ndarray  # Mean wheel odometry [m/s], independent acceleration [m/s²].
     sensor_valid: np.ndarray
+    slip_detected: np.ndarray
     terminal_state: SpatialState
     terminal_force: np.ndarray
     terminal_contact_modes: tuple[str, str] | None
@@ -316,6 +317,7 @@ def run_whole_body(
                 if sensor_valid
                 else (np.nan, np.nan),
                 sensor_valid=sensor_valid,
+                slip_detected=observation.slip_detected,
                 requested_reference=targets.requested,
                 effective_reference=targets.effective,
                 requested_effort=command.requested,

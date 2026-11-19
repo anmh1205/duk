@@ -20,6 +20,7 @@ class Observation:
     estimated_speed: float
     odometry: float
     acceleration: float
+    slip_detected: bool
 
 
 def contact_modes(supported, sliding) -> tuple[str, str]:
@@ -92,6 +93,7 @@ class ContactObserver:
             estimated_speed=self.forward_estimate,
             odometry=odometry,
             acceleration=independent,
+            slip_detected=longitudinal_slip,
         )
 
 

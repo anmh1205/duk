@@ -161,7 +161,11 @@ def test_height_reference_derivatives_follow_the_admitted_height(
     # product-rule implementation. Samples lie inside each linear ramp segment.
     dt = 0.001
     settings = research_inputs["whole_body"] | {"period_s": dt}
-    scenario = settings["scenario"] | {"feature_start_s": 0.10, "bounce_off_s": 0.35}
+    scenario = settings["scenario"] | {
+        "feature_start_s": 0.10,
+        "bounce_off_s": 0.35,
+        "height_offset_m": 0.008,
+    }
     policy = ReferencePolicy(settings, scenario, 0.4)
     state = SimpleNamespace(position=np.zeros(3))
     terms = SimpleNamespace(kinematics=SimpleNamespace(tasks=np.zeros(4)))
