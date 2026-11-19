@@ -73,7 +73,8 @@ jobs:
           docker compose -f compose.yaml -f environment/compose/simulation.yaml \
             -f .local/simulation/compose.json exec -T dev bash -lc '
               source /opt/ros/jazzy/setup.bash &&
-              QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 +              python -m pytest -q -m ros tests/integration/test_simulation_workbench.py
+              QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 \
+                python -m pytest -q -m ros tests/integration/test_simulation_workbench.py
             '
       - name: Verify moving RViz bench without windows
         run: |

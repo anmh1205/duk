@@ -140,7 +140,11 @@ source /opt/ros/jazzy/setup.bash
 python /workspace/tools/environment-check/verify-simulation-preview.py
 ```
 
-This requires the robot description, static world-to-base TF and advancing
-simulation clock; it does not infer success just from running processes.
+The check reads the robot description, static world-to-base TF, simulation
+clock and the live Gazebo scene. It compares both wheel centers and radii and
+the endpoints of the six segments per leg with the canonical Python pose in
+world coordinates. The geometry tolerance is one micrometre. For a preview
+launched with a custom angle or geometry file, pass the same values to the
+checker with `--angle-deg` and `--geometry`.
 
 [Development environment](environment.md) · [Simulation documentation](../simulation/README.md).
