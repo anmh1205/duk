@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from functools import cached_property
+
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 from duk_core.modeling.leg_linkage import LinkageError
 from duk_core.modeling.spatial_biped import SpatialBiped, SpatialState
-from duk_core.simulation.whole_body import run_whole_body
+from duk_core.simulation.whole_body import WholeBodyRun, WholeBodyTrace
 
 from .inputs import Inputs
 from .kinematics import linkage_signals
@@ -38,28 +40,54 @@ def spatial_model(inputs: Inputs, config: dict) -> SpatialBiped:
     )
 
 
-def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
-    config = inputs.whole_body_configuration(options)
-    model = spatial_model(inputs, config)
-    settings = inputs.fixture["whole_body"] | {
-        key: config[key]
-        for key in (
-            "period_s",
-            "substeps",
-            "initial_q_deg",
-            "sensor_seed",
-            "accel_noise_m_s2",
+class SpatialRun:
+    """Bind a resolved NB6 configuration to the shared batch and step runner."""
+
+    def __init__(self, inputs: Inputs, options: dict) -> None:
+        self.inputs = inputs
+        self.config = inputs.whole_body_configuration(options)
+        self.model = spatial_model(inputs, self.config)
+        self.settings = inputs.fixture["whole_body"] | {
+            key: self.config[key]
+            for key in (
+                "period_s",
+                "substeps",
+                "initial_q_deg",
+                "sensor_seed",
+                "accel_noise_m_s2",
+            )
+        }
+        self.runner = WholeBodyRun(
+            self.model,
+            inputs.motor,
+            inputs.fixture["v2_balance"],
+            self.settings,
+            self.config,
+            method=self.config["controller"],
+            priority=self.config["priority"],
         )
-    }
-    trace = run_whole_body(
-        model,
-        inputs.motor,
-        inputs.fixture["v2_balance"],
-        settings,
-        config,
-        method=config["controller"],
-        priority=config["priority"],
-    )
+
+    @cached_property
+    def provenance(self) -> dict:
+        return self.inputs.provenance()
+
+    def record(self, *, cancelled: bool = False) -> RunRecord:
+        trace = self.runner.trace()
+        if self.runner.finished:
+            outcome = trace.stop_reason or "completed"
+        else:
+            outcome = "cancelled" if cancelled else "paused"
+        return _spatial_record(self, trace, outcome)
+
+
+def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
+    run = SpatialRun(inputs, options)
+    run.runner.run_to_end()
+    return run.record()
+
+
+def _spatial_record(run: SpatialRun, trace: WholeBodyTrace, outcome: str) -> RunRecord:
+    inputs, config, model, settings = run.inputs, run.config, run.model, run.settings
     times = trace.time.tolist()
     terminal = trace.terminal_state
     append_end = trace.terminal_time > times[-1]
@@ -356,28 +384,38 @@ def spatial_record(inputs: Inputs, options: dict) -> RunRecord:
         return next((time for time in times if time >= requested), None)
 
     events = []
-    if config["friction"] != config["friction_after"]:
-        when = config["friction_change_s"]
-        events.append(event("Đổi độ bám", when, actual(when)))
-    if any(config["velocity_impulse_m_s"] + config["angular_velocity_impulse_rad_s"]):
-        when = config["impulse_at_s"]
-        events.append(event("Nhiễu động vận tốc", when, actual(when)))
-    if config["fault"] != "none":
-        when = config["fault_start_s"]
-        active = next((t for t in times if when <= t < config["fault_end_s"]), None)
-        events.append(event(f"Lỗi · {config['fault']}", when, active))
+    if "schedule" in config:
+        for change in trace.scheduled_changes:
+            tick = change.tick
+            applied = times[tick] if tick is not None and tick < len(times) else None
+            events.append(
+                event(f"schedule.{change.field}", change.time_s, applied)
+                | {"value": plain(change.value)}
+            )
+    else:
+        if config["friction"] != config["friction_after"]:
+            when = config["friction_change_s"]
+            events.append(event("Đổi độ bám", when, actual(when)))
+        if any(
+            config["velocity_impulse_m_s"] + config["angular_velocity_impulse_rad_s"]
+        ):
+            when = config["impulse_at_s"]
+            events.append(event("Nhiễu động vận tốc", when, actual(when)))
+        if config["fault"] != "none":
+            when = config["fault_start_s"]
+            active = next((t for t in times if when <= t < config["fault_end_s"]), None)
+            events.append(event(f"Lỗi · {config['fault']}", when, active))
     events += transitions(times, list(trace.command_source), "Lệnh")
     if append_end:
         times.append(float(trace.terminal_time))
     for side, name in zip(SIDES, ("Bánh trái", "Bánh phải")):
         events += transitions(times, signals[side + "_contact_mode"].values, name)
     signals.update(linkage_signals(inputs, signals))
-    outcome = trace.stop_reason or "completed"
     events.append(event(outcome, None, times[-1]))
     return RunRecord(
         "NB6",
         config,
-        inputs.provenance(),
+        run.provenance,
         times,
         signals,
         outcome,

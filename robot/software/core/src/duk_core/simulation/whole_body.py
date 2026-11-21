@@ -6,7 +6,7 @@ algorithms and the allocator remain owned by their respective core layers.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Literal
@@ -22,6 +22,7 @@ from ._whole_body_command import CommandPolicy
 from ._whole_body_setup import initialize
 from ._whole_body_state import ContactObserver, PlantGuard, contact_modes
 from ._whole_body_tasks import ReferencePolicy, build_tasks
+from .whole_body_schedule import ScheduledChange, compile_schedule
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,7 @@ class WholeBodyTrace:
     fallback_gain: np.ndarray
     fallback_a: np.ndarray
     fallback_b: np.ndarray
+    scheduled_changes: tuple[ScheduledChange, ...] = ()
 
     def state_at(self, index: int) -> SpatialState:
         """World position, body-to-world rotation, joints and generalized velocity."""
@@ -108,7 +110,6 @@ def _allocate_sample(
     observation,
     setup,
     settings,
-    scenario,
     hip_motor,
     effort_bounds,
     friction_belief,
@@ -122,10 +123,10 @@ def _allocate_sample(
     if not sensor_valid or fallen:
         status = "skipped_sensor" if not sensor_valid else "skipped_safety"
         return Allocation(status, None, np.nan, 0.0)
-    if fault and scenario["fault"] == "deadline":
+    if fault == "deadline":
         # A synthetic late return makes this fault independent of CPU speed.
         return Allocation("deadline", None, np.nan, 0.0)
-    inject_infeasible = fault and scenario["fault"] == "infeasible"
+    inject_infeasible = fault == "infeasible"
     hip_limits = setup.hip_limits
     return allocate(
         terms,
@@ -146,6 +147,82 @@ def _allocate_sample(
     )
 
 
+def _velocity_jump(state: SpatialState, linear, angular) -> SpatialState:
+    velocity = state.velocity.copy()
+    velocity[:3] += linear
+    velocity[3:6] += angular
+    return SpatialState(state.position, state.rotation, state.joints, velocity)
+
+
+class WholeBodyRun:
+    """Advance the sampled NB6 plant one command interval at a time.
+
+    The in-memory run retains the observer, scheduler and solver state between
+    calls. A trace may be requested after the first interval, including after
+    an early stop. Advance and trace must be called from a single owner.
+    """
+
+    def __init__(
+        self,
+        model: SpatialBiped,
+        hip_motor: LinearTorqueSpeed,
+        weights: Mapping[str, Any],
+        settings: Mapping[str, Any],
+        scenario: Mapping[str, Any],
+        *,
+        method: Literal["weighted", "hierarchical"],
+        priority: Literal["balance_first", "legs_first"],
+    ) -> None:
+        self._steps = _whole_body_steps(
+            model,
+            hip_motor,
+            weights,
+            settings,
+            scenario,
+            method=method,
+            priority=priority,
+        )
+        self._snapshot: Callable[[], WholeBodyTrace] | None = None
+        self._result: WholeBodyTrace | None = None
+        self.time_s = 0.0
+
+    @property
+    def finished(self) -> bool:
+        return self._result is not None
+
+    @property
+    def has_samples(self) -> bool:
+        return self._snapshot is not None or self.finished
+
+    def advance(self) -> float:
+        """Advance one command interval, ending sooner if a guard stops it."""
+        if self._result is None:
+            self._snapshot = None
+            try:
+                self.time_s, self._snapshot = next(self._steps)
+            except StopIteration as stop:
+                if stop.value is None:
+                    raise RuntimeError(
+                        "The whole-body run ended without a trace"
+                    ) from None
+                self._result = stop.value
+                self.time_s = self._result.terminal_time
+        return self.time_s
+
+    def trace(self) -> WholeBodyTrace:
+        """Return the accepted data through the current integration boundary."""
+        if self._result is not None:
+            return self._result
+        if self._snapshot is None:
+            raise ValueError("Advance the whole-body run before reading its trace")
+        return self._snapshot()
+
+    def run_to_end(self) -> WholeBodyTrace:
+        while not self.finished:
+            self.advance()
+        return self.trace()
+
+
 def run_whole_body(
     model: SpatialBiped,
     hip_motor: LinearTorqueSpeed,
@@ -164,7 +241,26 @@ def run_whole_body(
     An impulse is delivered at the first command sample at or after its requested
     time, like the sampled friction and fault changes. No impulse is delivered
     after the last command sample, including at the terminal horizon.
+    An explicit schedule replaces the legacy grip switch, impulse, fault window
+    and drive/turn commands. Other reference settings remain the defaults for
+    the schedule. A scheduled height offset is a target step with no impulsive
+    feedforward terms.
     """
+    return WholeBodyRun(
+        model, hip_motor, weights, settings, scenario, method=method, priority=priority
+    ).run_to_end()
+
+
+def _whole_body_steps(
+    model: SpatialBiped,
+    hip_motor: LinearTorqueSpeed,
+    weights: Mapping[str, Any],
+    settings: Mapping[str, Any],
+    scenario: Mapping[str, Any],
+    *,
+    method: Literal["weighted", "hierarchical"],
+    priority: Literal["balance_first", "legs_first"],
+) -> Generator[tuple[float, Callable[[], WholeBodyTrace]], None, WholeBodyTrace]:
     if method not in {"weighted", "hierarchical"}:
         raise ValueError("Unknown allocation method")
     if priority not in {"balance_first", "legs_first"}:
@@ -185,26 +281,37 @@ def run_whole_body(
         )
     times, ends = sample_intervals(duration, period)
     friction_before = _friction_pair(scenario["friction"], "friction")
-    friction_after = _friction_pair(scenario["friction_after"], "friction_after")
-    friction_change = scenario["friction_change_s"]
-    if not np.isfinite(friction_change) or friction_change < 0:
-        raise ValueError("friction_change_s must be finite and nonnegative")
-    impulse_time = scenario["impulse_at_s"]
-    linear_impulse = np.asarray(scenario["velocity_impulse_m_s"], dtype=float)
-    angular_impulse = np.asarray(
-        scenario["angular_velocity_impulse_rad_s"], dtype=float
-    )
-    if (
-        not np.isfinite(impulse_time)
-        or impulse_time < 0
-        or linear_impulse.shape != (3,)
-        or angular_impulse.shape != (3,)
-        or not np.isfinite(np.r_[linear_impulse, angular_impulse]).all()
-    ):
-        raise ValueError(
-            "Expected a finite nonnegative impulse time and two finite 3-vectors"
+    schedule = scenario.get("schedule")
+    scheduled_changes = ()
+    overrides = {}
+    by_tick = {}
+    if schedule is None:
+        friction_after = _friction_pair(scenario["friction_after"], "friction_after")
+        friction_change = scenario["friction_change_s"]
+        if not np.isfinite(friction_change) or friction_change < 0:
+            raise ValueError("friction_change_s must be finite and nonnegative")
+        impulse_time = scenario["impulse_at_s"]
+        linear_impulse = np.asarray(scenario["velocity_impulse_m_s"], dtype=float)
+        angular_impulse = np.asarray(
+            scenario["angular_velocity_impulse_rad_s"], dtype=float
         )
-    impulse_tick = np.searchsorted(times, impulse_time)
+        if (
+            not np.isfinite(impulse_time)
+            or impulse_time < 0
+            or linear_impulse.shape != (3,)
+            or angular_impulse.shape != (3,)
+            or not np.isfinite(np.r_[linear_impulse, angular_impulse]).all()
+        ):
+            raise ValueError(
+                "Expected a finite nonnegative impulse time and two finite 3-vectors"
+            )
+        impulse_tick = np.searchsorted(times, impulse_time)
+    else:
+        scheduled_changes = compile_schedule(schedule, times)
+        for change in scheduled_changes:
+            if change.tick is not None:
+                by_tick.setdefault(change.tick, {})[change.field] = change.value
+        overrides = {"drive_speed_m_s": 0.0, "turn_rate_rad_s": 0.0}
     setup = initialize(model, weights, settings, scenario)
     state = setup.state
     observer = ContactObserver(settings, {**scenario, "friction": friction_before})
@@ -221,18 +328,66 @@ def run_whole_body(
     integrated_effort = None
     rows, labels = [], []
 
+    def snapshot() -> WholeBodyTrace:
+        terminal_modes = None
+        if guard.terminal_time == rows[-1]["time"]:
+            terminal_modes = labels[-1]["contact_modes"]
+        elif np.isfinite(guard.terminal_pose).all():
+            current = model.kinematics(state)
+            supported = (current.gaps <= settings["contact_gap_m"]) & (
+                previous_force[:, 2] > 0
+            )
+            slip = (current.contact @ state.velocity)[:, :2]
+            terminal_modes = contact_modes(
+                supported,
+                np.linalg.norm(slip, axis=1) > settings["spatial_slip_threshold_m_s"],
+            )
+        return WholeBodyTrace(
+            **{name: np.asarray([row[name] for row in rows]) for name in rows[0]},
+            **{name: tuple(row[name] for row in labels) for name in labels[0]},
+            stop_reason=guard.stop_reason,
+            terminal_time=guard.terminal_time,
+            terminal_pose=guard.terminal_pose,
+            peak_abs_lean_roll=guard.peak_abs_lean_roll,
+            terminal_state=state,
+            terminal_force=previous_force,
+            terminal_contact_modes=terminal_modes,
+            terminal_integrated_effort=integrated_effort,
+            fallback_gain=setup.gain,
+            fallback_a=setup.a[1:, 1:],
+            fallback_b=setup.b[1:],
+            scheduled_changes=scheduled_changes,
+        )
+
     for tick, (time, end) in enumerate(zip(times, ends)):
-        if tick == impulse_tick:
-            velocity = state.velocity.copy()
-            velocity[:3] += linear_impulse
-            velocity[3:6] += angular_impulse
-            state = SpatialState(state.position, state.rotation, state.joints, velocity)
-        fault = scenario["fault_start_s"] <= time < scenario["fault_end_s"]
-        friction = friction_after if time >= friction_change else friction_before
+        if schedule is None:
+            if tick == impulse_tick:
+                state = _velocity_jump(state, linear_impulse, angular_impulse)
+            fault = (
+                scenario["fault"]
+                if scenario["fault_start_s"] <= time < scenario["fault_end_s"]
+                else "none"
+            )
+            friction = friction_after if time >= friction_change else friction_before
+        else:
+            changes = by_tick.get(tick)
+            if changes:
+                linear = changes.get("velocity_impulse_m_s")
+                angular = changes.get("angular_velocity_impulse_rad_s")
+                if linear is not None or angular is not None:
+                    state = _velocity_jump(state, linear or 0.0, angular or 0.0)
+                overrides.update(changes)
+            fault = overrides.get("fault", "none")
+            friction = np.array(
+                [
+                    overrides.get("friction_left", friction_before[0]),
+                    overrides.get("friction_right", friction_before[1]),
+                ]
+            )
         terms = model.evaluate(state)
         observation = observer.observe(model, state, terms, previous_force, tick)
         fallen = guard.observe(terms.kinematics, previous_force, time)
-        sensor_valid = not (fault and scenario["fault"] == "sensor")
+        sensor_valid = fault != "sensor"
         targets = references.update(
             state,
             terms,
@@ -242,6 +397,7 @@ def run_whole_body(
             sensor_valid=sensor_valid,
             fallen=fallen,
             previous_usage=previous_usage,
+            overrides=overrides,
         )
         tasks = build_tasks(
             terms, state, observation, targets, setup, settings, priority
@@ -261,7 +417,6 @@ def run_whole_body(
             observation,
             setup,
             settings,
-            scenario,
             hip_motor,
             effort_bounds,
             observer.friction_belief,
@@ -373,32 +528,7 @@ def run_whole_body(
         integrated_effort = command.applied
         if guard.stop_reason is not None:
             break
+        if tick + 1 < len(times):
+            yield guard.terminal_time, snapshot
 
-    terminal_modes = None
-    if guard.terminal_time == rows[-1]["time"]:
-        terminal_modes = labels[-1]["contact_modes"]
-    elif np.isfinite(guard.terminal_pose).all():
-        current = model.kinematics(state)
-        supported = (current.gaps <= settings["contact_gap_m"]) & (
-            previous_force[:, 2] > 0
-        )
-        slip = (current.contact @ state.velocity)[:, :2]
-        terminal_modes = contact_modes(
-            supported,
-            np.linalg.norm(slip, axis=1) > settings["spatial_slip_threshold_m_s"],
-        )
-    return WholeBodyTrace(
-        **{name: np.asarray([row[name] for row in rows]) for name in rows[0]},
-        **{name: tuple(row[name] for row in labels) for name in labels[0]},
-        stop_reason=guard.stop_reason,
-        terminal_time=guard.terminal_time,
-        terminal_pose=guard.terminal_pose,
-        peak_abs_lean_roll=guard.peak_abs_lean_roll,
-        terminal_state=state,
-        terminal_force=previous_force,
-        terminal_contact_modes=terminal_modes,
-        terminal_integrated_effort=integrated_effort,
-        fallback_gain=setup.gain,
-        fallback_a=setup.a[1:, 1:],
-        fallback_b=setup.b[1:],
-    )
+    return snapshot()

@@ -70,6 +70,68 @@ Thêm `--no-rviz` để mở Qt riêng. Có thể bấm **Mở RViz** sau khi Qt
 **Nạp kịch bản JSON** và **Lưu kịch bản JSON** đọc hoặc lưu các đầu vào đang
 hiển thị. Dấu `/` phân cách các thành phần của một vectơ trong biểu mẫu.
 
+### Tạo kịch bản NB6 với nhiều mốc
+
+1. Chọn **NB6** rồi chọn **Kịch bản mới** để bắt đầu với tham số danh định
+   và lịch trống. Kết quả trước vẫn xem được trong khi chỉnh kịch bản.
+2. Chọn **Sửa lịch**, thêm dòng, đặt thời điểm, tác động và giá trị. Có thể
+   lập nhiều mốc tiến/quay/dừng, đổi độ bám riêng cho mỗi bánh, thay độ lệch
+   cao độ đặt, bật hoặc tắt tác vụ độ cao, cân bằng ngang, neo vị trí và giữ
+   hướng, đặt bước nhảy vận tốc trong hệ thế giới và chọn lỗi giả lập.
+3. Chọn **Áp dụng lịch** rồi **Chạy mô phỏng**. Trong tab **Sự kiện**, mỗi
+   dòng ghi giá trị, thời điểm yêu cầu và thời điểm thực tế. Kích hoạt dòng
+   có mốc thực tế để tới mẫu tương ứng.
+4. **Lưu kịch bản JSON** để mở lại hoặc chạy tệp đó bằng `--scenario`.
+   **Tệp kết quả → Lưu kết quả** giữ các mốc thực tế cùng tín hiệu và cấu
+   hình đã dùng.
+
+Lịch tùy chỉnh thay các mốc tiến/quay, đổi bám, nhiễu động và lỗi đơn lẻ của
+ca mẫu. Vận tốc đặt và tốc độ quay đặt bắt đầu ở 0, giữ đến mốc đổi tiếp theo.
+Độ bám ban đầu vẫn lấy từ biểu mẫu. Các tác vụ giữ thiết lập ban đầu cho đến
+khi được đổi trong lịch. Độ lệch cao độ tác động khi tác vụ độ cao được bật.
+Bước nhảy vận tốc được áp một lần; chọn **Không lỗi** để kết thúc lỗi. Nếu
+lỗi đã làm ca dừng, các mốc sau đó vẫn được ghi với thời điểm thực tế để trống.
+
+Mốc áp dụng ở mẫu lệnh đầu tiên từ thời điểm yêu cầu. Có thể đổi hai bánh
+trong cùng mẫu. Hai dòng đổi cùng một tác động trong cùng mẫu sẽ được báo lỗi.
+Các mốc đúng thời lượng kết thúc hoặc sau mẫu lệnh cuối không được áp dụng.
+Kịch bản NB6 cũ không có `schedule` tiếp tục dùng các mốc của ca mẫu.
+
+Ví dụ JSON cho cùng luồng Qt và CLI:
+
+```json
+{
+  "study": "NB6",
+  "duration_s": 0.45,
+  "schedule": [
+    {"time_s": 0.0, "field": "drive_speed_m_s", "value": 0.15},
+    {"time_s": 0.12, "field": "friction_left", "value": 0.3},
+    {"time_s": 0.18, "field": "turn_rate_rad_s", "value": 0.12},
+    {"time_s": 0.27, "field": "drive_speed_m_s", "value": 0.0},
+    {"time_s": 0.27, "field": "turn_rate_rad_s", "value": 0.0}
+  ]
+}
+```
+
+### Chạy NB6 từng bước
+
+- Chọn **Chạy từng bước NB6** để chốt cấu hình và chuẩn bị ở 0 s.
+  **Tính 1 bước** chạy một khoảng lệnh, cùng các bước tích phân con bên
+  trong. Nếu mô hình dừng trong khoảng đó, kết quả giữ mốc dừng thực.
+- **Chạy tiếp** giữ trạng thái mô phỏng, bộ ước lượng và lịch sự kiện rồi
+  chạy tới mốc cuối. **Tạm dừng tính** chờ khoảng đang tính kết thúc.
+  Biểu đồ và RViz hiển thị mốc mới khi tạm dừng, hủy hoặc kết thúc. Nút
+  **Phát** bên thanh thời gian chỉ phát lại dữ liệu đã tính.
+- Tại biên tạm dừng, kết quả có tư thế, lực và mô-men của khoảng vừa tính.
+  Lệnh và sự kiện ở đầu khoảng kế tiếp chưa được xử lý. Khi chạy tiếp,
+  các mốc đó được áp dụng đúng một lần theo cấu hình đã chốt.
+- **Hủy ca** chốt dữ liệu tại biên đã tính. Nếu chưa tính bước nào, giữ
+  kết quả trước. Có thể lưu bản ghi tạm dừng hoặc đã hủy để xem lại. Trạng
+  thái chạy tiếp được giữ trong phiên Qt. Để tái lập một bản ghi từng phần
+  sau khi đóng phiên, mở kịch bản và chạy lại từ đầu.
+
+### Các bài thử có sẵn
+
 | Bài thử | Cấu hình và tín hiệu chính |
 | --- | --- |
 | NB1–NB2 | Góc, đạo hàm riêng mỗi chân, quỹ đạo quintic, IK tâm bánh, mặt đỡ lệch cao độ, tải tại tâm bánh và đường bao mô-men–tốc độ. Hệ thân và hệ thế giới dùng hình học chuẩn. Tải hông được tính tĩnh trong mặt phẳng sagittal. |
@@ -122,7 +184,9 @@ tạo tại thời điểm 0. Chế độ tiếp xúc và sự kiện NB6 là qu
 **Lưu kết quả** tạo JSON chứa kịch bản đã áp dụng, dấu vân tay mã, các tham số,
 seed, thông tin phiên bản, tín hiệu, đơn vị, hệ tọa độ và sự kiện. **Mở kết quả**
 đọc lại dữ liệu mà không chạy bộ mô phỏng. **Đối chiếu tệp** chồng hai ca cùng
-mô hình trên cùng trục thời gian. **Xuất CSV** giữ độ chính xác số đầy đủ, còn
+mô hình trên cùng trục thời gian. Con trỏ chạy tới hết cả hai ca. Bảng để trống
+giá trị ngoài thời lượng từng ca, và chú thích con trỏ ghi **Đối chiếu** khi
+đang hiển thị tư thế từ ca đối chiếu. **Xuất CSV** giữ độ chính xác số đầy đủ, còn
 Qt dùng dấu phẩy thập phân và hiển thị sai số rất nhỏ dưới dạng `< 0,000001`.
 
 **Chạy lại và kiểm tra** dùng dung sai tuyệt đối 0,00000001 và tương đối

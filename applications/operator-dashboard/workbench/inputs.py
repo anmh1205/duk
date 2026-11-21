@@ -15,8 +15,10 @@ from duk_core.modeling import build_planar_biped_model
 from duk_core.modeling.hip_load import LinearTorqueSpeed
 from duk_core.modeling.leg_linkage import geometry_from_mapping
 from duk_core.modeling.planar_numeric import NumericPlanarBiped
+from duk_core.simulation import sample_times
+from duk_core.simulation.whole_body_schedule import FAULT_MODES, compile_schedule
 
-from .records import decimal, finite_number, reject_json_constant
+from .records import decimal, finite_number, plain, reject_json_constant
 
 ROOT = Path(__file__).resolve().parents[3]
 GEOMETRY = ROOT / "robot/config/physical/duk_leg_geometry.json"
@@ -24,6 +26,22 @@ PROFILE = ROOT / "research/experiments/duk-v3/synthetic.json"
 LEFT_GRIP = ROOT / "robot/simulation/scenarios/whole-body-left-grip.json"
 INTEGER_SCENARIO_FIELDS = frozenset(
     ("sensor_seed", "substeps", "noise_seed", "delay_samples", "mpc_horizon")
+)
+NB6_LEGACY_TIMED_FIELDS = frozenset(
+    (
+        "friction_change_s",
+        "friction_after",
+        "impulse_at_s",
+        "velocity_impulse_m_s",
+        "angular_velocity_impulse_rad_s",
+        "fault",
+        "fault_start_s",
+        "fault_end_s",
+        "drive_speed_m_s",
+        "drive_end_s",
+        "turn_rate_rad_s",
+        "turn_end_s",
+    )
 )
 
 
@@ -159,18 +177,23 @@ class Inputs:
             "accel_noise_m_s2": study["accel_noise_m_s2"],
             "height_offset_m": 0.0,
             **scenario,
+            "schedule": None,
         }
 
     def whole_body_configuration(self, options: dict) -> dict:
         defaults = self.whole_body_defaults(options.get("case", "nominal"))
         config = merged(defaults, options)
+        if config["schedule"] is not None:
+            # The explicit schedule owns these timed inputs. Preserve only
+            # the active values in the resolved scenario, even for imported drafts.
+            config.update({key: defaults[key] for key in NB6_LEGACY_TIMED_FIELDS})
         if config["controller"] not in ("weighted", "hierarchical"):
             raise ValueError(
                 "NB6 accepts QP (weighted) or HQP (hierarchical) four-actuator effort"
             )
         if config["priority"] not in ("balance_first", "legs_first"):
             raise ValueError("Unknown NB6 task priority")
-        if config["fault"] not in ("none", "sensor", "deadline", "infeasible"):
+        if config["fault"] not in FAULT_MODES:
             raise ValueError("Unknown NB6 fault")
         settings = self.fixture["whole_body"]
         ranges = {
@@ -214,4 +237,15 @@ class Inputs:
             )
         if config["fault_end_s"] < config["fault_start_s"]:
             raise ValueError("fault_end_s precedes fault_start_s")
+        events = config.pop("schedule")
+        if events is not None:
+            ticks = sample_times(config["duration_s"], config["period_s"])[:-1]
+            config["schedule"] = [
+                {
+                    "time_s": change.time_s,
+                    "field": change.field,
+                    "value": plain(change.value),
+                }
+                for change in compile_schedule(events, ticks)
+            ]
         return config

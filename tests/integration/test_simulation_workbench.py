@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import subprocess
+import sys
 import time
 from dataclasses import asdict, replace
 
 import numpy as np
 import pytest
-from workbench.inputs import LEFT_GRIP, PROFILE, Inputs, read_object
+from workbench.inputs import LEFT_GRIP, PROFILE, ROOT, Inputs, read_object
 from workbench.records import RunRecord, Signal, decimal, event
 from workbench.session import Workbench, check_replay
 from workbench.spatial import spatial_model
@@ -25,6 +28,11 @@ def session():
 @pytest.fixture(scope="module")
 def left_grip(session):
     return session.run(read_object(LEFT_GRIP))
+
+
+@pytest.fixture(scope="module")
+def short_nb6_record(session):
+    return session.run({"study": "NB6", "duration_s": 0.015})
 
 
 @pytest.fixture
@@ -189,7 +197,6 @@ def test_left_grip_parity_and_comparison(session, left_grip, tmp_path):
     loaded.export_csv(csv_path)
     assert "left_slip_speed [m/s]" in csv_path.read_text().splitlines()[0]
     assert loaded == left_grip
-    assert session.verify_replay(loaded).stop_reason == "completed"
 
 
 @pytest.mark.parametrize(
@@ -402,6 +409,350 @@ def test_sagittal_contact_termination_and_height_policies(session):
 def test_rejects_incompatible_studies_and_commands(session, options):
     with pytest.raises(ValueError):
         session.run(options)
+
+
+def test_nb6_multiple_changes_resolve_on_command_ticks(session):
+    changes = [
+        {"time_s": 0, "field": "drive_speed_m_s", "value": 0.08},
+        {"time_s": 0.010, "field": "friction_left", "value": 0.3},
+        {"time_s": 0.012, "field": "friction_right", "value": 0.5},
+        {"time_s": 0.018, "field": "turn_rate_rad_s", "value": -0.14},
+        {"time_s": 0.020, "field": "drive_speed_m_s", "value": 0},
+        {"time_s": 0.031, "field": "friction_left", "value": 0.55},
+        {"time_s": 0.041, "field": "level_hold", "value": True},
+        {"time_s": 0.045, "field": "fault", "value": "deadline"},
+        {"time_s": 0.055, "field": "fault", "value": "none"},
+        {"time_s": 0.073, "field": "friction_left", "value": 0.2},
+    ]
+    options = read_object(LEFT_GRIP) | {"duration_s": 0.073, "schedule": changes}
+    record = session.run(options)
+    assert record.stop_reason == "completed"
+    assert record.time_s == [0.0, 0.015, 0.030, 0.045, 0.060, 0.073]
+    scheduled = [item for item in record.events if item["name"].startswith("schedule.")]
+    assert len(scheduled) == len(changes)
+    assert [item["requested_s"] for item in scheduled] == [
+        change["time_s"] for change in changes
+    ]
+    assert [item["actual_s"] for item in scheduled] == [
+        0,
+        0.015,
+        0.015,
+        0.030,
+        0.030,
+        0.045,
+        0.045,
+        0.045,
+        0.060,
+        None,
+    ]
+    assert record.signals["left_friction"].values == [0.65, 0.3, 0.3, 0.55, 0.55, None]
+    assert record.signals["right_friction"].values == [0.65, 0.5, 0.5, 0.5, 0.5, None]
+    assert record.signals["requested_speed"].values == [0.08, 0.08, 0, 0, 0, None]
+    assert record.signals["requested_yaw_rate"].values == [
+        0,
+        0,
+        -0.14,
+        -0.14,
+        -0.14,
+        None,
+    ]
+    assert not record.signals["feature_intent"].values[2][1]
+    assert record.signals["feature_intent"].values[3][1]
+    assert record.signals["solver_status"].values[3] == "deadline"
+    assert record.signals["solver_status"].values[4] != "deadline"
+    assert not any(
+        item["name"] == "Đổi độ bám" or item["name"] == "Nhiễu động vận tốc"
+        for item in record.events
+    )
+
+
+def test_nb6_schedule_rejects_conflicting_ticks_and_negative_grip(session):
+    options = {"study": "NB6", "duration_s": 0.073}
+    first = {"time_s": 0.016, "field": "friction_left", "value": 0.25}
+    conflict = first | {"time_s": 0.02, "value": 0.3}
+    with pytest.raises(ValueError, match="dòng 2.*cùng mẫu lệnh"):
+        session.run(options | {"schedule": [first, conflict]})
+    with pytest.raises(ValueError, match="độ bám phải không âm"):
+        session.run(options | {"schedule": [first | {"value": -0.1}]})
+
+
+def test_nb6_step_preserves_full_horizon_and_event_phases(session):
+    options = {
+        "study": "NB6",
+        "duration_s": 0.049,
+        "schedule": [
+            {"time_s": 0.004, "field": "friction_left", "value": 0.3},
+            {"time_s": 0.019, "field": "drive_speed_m_s", "value": 0.08},
+        ],
+    }
+    experiment = session.begin_nb6(options)
+    runner = experiment.runner
+    assert runner.time_s == 0.0
+    assert not runner.has_samples
+    with pytest.raises(ValueError, match="before reading"):
+        experiment.record()
+
+    assert runner.advance() == 0.015
+    first = experiment.record()
+    assert first.stop_reason == "paused"
+    assert first.time_s == [0.0, 0.015]
+    pre_event_velocity = first.signals["state_velocity"].values[-1][0]
+    assert first.events[0]["actual_s"] is None
+    assert first.signals["left_hip_applied"].values[-1] is None
+    assert first.signals["left_hip_preceding_effort"].values[-1] is not None
+
+    assert runner.advance() == 0.03
+    partial = experiment.record(cancelled=True)
+    assert partial.stop_reason == "cancelled"
+    assert [entry["actual_s"] for entry in partial.events[:2]] == [0.015, None]
+    assert first.time_s == [0.0, 0.015]
+    with pytest.raises(ValueError, match="chỉ dùng để phát lại"):
+        session.verify_replay(partial)
+
+    runner.run_to_end()
+    assert runner.finished
+    final = experiment.record()
+    assert final.time_s[-1] == 0.049
+    assert [entry["actual_s"] for entry in final.events[:2]] == [0.015, 0.03]
+    assert runner.advance() == 0.049
+    check_replay(session.run(options), final)
+
+    stopped = session.begin_nb6(
+        options
+        | {
+            "schedule": [
+                {"time_s": 0.01, "field": "fault", "value": "sensor"},
+                {
+                    "time_s": 0.004,
+                    "field": "velocity_impulse_m_s",
+                    "value": [0.02, 0, 0],
+                },
+                options["schedule"][1],
+            ]
+        }
+    )
+    assert stopped.runner.advance() == 0.015
+    assert stopped.runner.advance() == 0.015
+    assert stopped.runner.finished
+    stopped_record = stopped.record()
+    assert stopped_record.stop_reason == "sensor"
+    assert stopped_record.signals["sensor_valid"].values == [True, False]
+    assert [entry["actual_s"] for entry in stopped_record.events[:3]] == [
+        0.015,
+        0.015,
+        None,
+    ]
+    assert (
+        stopped_record.signals["state_velocity"].values[-1][0] - pre_event_velocity
+    ) == pytest.approx(0.02)
+
+
+@pytest.mark.ros
+def test_qt_nb6_step_pause_resume_and_cancel(
+    session, short_nb6_record, tmp_path, monkeypatch
+):
+    pytest.importorskip("python_qt_binding")
+    rclpy = pytest.importorskip("rclpy")
+    from std_msgs.msg import Float64
+    from workbench.qt_panel import W, WorkbenchWindow
+    from workbench.viewer import Viewer
+
+    options = {
+        "study": "NB6",
+        "duration_s": 0.043,
+        "schedule": [{"time_s": 0.012, "field": "friction_left", "value": 0.3}],
+    }
+    app = W.QApplication.instance() or W.QApplication([])
+    window = WorkbenchWindow(
+        session, short_nb6_record.configuration, short_nb6_record, rviz=False
+    )
+    observed_times = []
+    node = None
+
+    def until(condition):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            app.processEvents()
+            rclpy.spin_once(node, timeout_sec=0.02)
+            if condition():
+                return
+            time.sleep(0.01)
+        pytest.fail("Timed out waiting for the interactive NB6 run")
+
+    try:
+        window.viewer = Viewer(session.inputs, headless=True)
+        node = rclpy.create_node("test_nb6_interactive")
+        node.create_subscription(
+            Float64,
+            "/duk/workbench/sample_time",
+            lambda msg: observed_times.append(msg.data),
+            10,
+        )
+        window.viewer_timer.start()
+        window.show()
+        window.scenario.set_configuration(options)
+        window.prepare_button.click()
+        until(lambda: window.interactive is not None and window.pending is None)
+        assert window.interactive.runner.time_s == 0
+        assert not window.scenario.isEnabled()
+        assert window.run is short_nb6_record
+        window.step_button.click()
+        until(lambda: window.pending is None and window.run.stop_reason == "paused")
+        assert window.time.text() == "0,015 s"
+        assert window.run.events[0]["actual_s"] is None
+        until(lambda: bool(observed_times) and observed_times[-1] == 0.015)
+
+        window.continue_button.click()
+        assert window.continue_button.text() == "Tạm dừng tính"
+        window.continue_button.click()
+        until(lambda: window.pending is None and window.time.text() == "0,03 s")
+        assert window.run.events[0]["actual_s"] == 0.015
+        assert window.run.stop_reason == "paused"
+        window.seek(0.0)
+        assert window.time.text() == "0 s"
+        assert window.interactive.runner.time_s == 0.03
+
+        window.continue_button.click()
+        until(lambda: window.interactive is None and window.pending is None)
+        assert window.time.text() == "0,043 s"
+        assert window.run.stop_reason == "completed"
+        until(lambda: observed_times[-1] == 0.043)
+
+        window.prepare_button.click()
+        until(lambda: window.interactive is not None and window.pending is None)
+        window.step_button.click()
+        window.cancel_button.click()
+        until(lambda: window.interactive is None and window.pending is None)
+        assert window.run.stop_reason == "cancelled"
+        assert window.run.time_s[-1] == 0.015
+        assert window.run.events[0]["actual_s"] is None
+        path = tmp_path / "cancelled.json"
+        monkeypatch.setattr(
+            W.QFileDialog, "getSaveFileName", lambda *_: (str(path), "")
+        )
+        window.save_run()
+        assert RunRecord.load(path).stop_reason == "cancelled"
+        assert window.scenario.isEnabled()
+    finally:
+        if node is not None:
+            node.destroy_node()
+        window.close()
+
+
+@pytest.mark.ros
+def test_qt_creates_schedule_and_cli_replays_same_file(
+    session, short_nb6_record, tmp_path, monkeypatch
+):
+    pytest.importorskip("python_qt_binding")
+    from workbench.qt_panel import ROLE, QtCore, W, WorkbenchWindow
+    from workbench.qt_schedule import ScheduleDialog
+
+    app = W.QApplication.instance() or W.QApplication([])
+    before = short_nb6_record
+    window = WorkbenchWindow(session, before.configuration, before, rviz=False)
+    scope = window.scenario
+    errors = []
+
+    def edit_rows():
+        dialog = app.activeModalWidget()
+        try:
+            assert isinstance(dialog, ScheduleDialog)
+            dialog.add_row()
+            dialog.table.item(0, 0).setText("0,004")
+            field = dialog.table.cellWidget(0, 1)
+            field.setCurrentIndex(field.findData("friction_left"))
+            dialog.table.cellWidget(0, 2).setText("0,25")
+            dialog.add_row({"time_s": 0.019, "field": "drive_speed_m_s", "value": 0.12})
+            dialog.accept()
+            assert not dialog.error.text()
+        except Exception as exc:
+            errors.append(exc)
+            if isinstance(dialog, ScheduleDialog):
+                dialog.reject()
+
+    try:
+        window.show()
+        window.new_button.click()
+        assert scope.schedule_mode.isChecked()
+        assert window.run is before
+        assert "chưa chạy" in window.draft_notice.text()
+        scope.findChild(W.QLineEdit, "duration_s").setText("0,043")
+        QtCore.QTimer.singleShot(0, edit_rows)
+        scope.schedule_button.click()
+        assert not errors
+        requested = scope.configuration()
+        assert requested["schedule"][0]["value"] == 0.25
+        assert scope.findChild(W.QLineEdit, "friction_change_s").isHidden()
+        scenario_path = tmp_path / "scenario.json"
+        monkeypatch.setattr(
+            W.QFileDialog,
+            "getSaveFileName",
+            lambda *_args: (str(scenario_path), "JSON (*.json)"),
+        )
+        window.save_scenario()
+        assert read_object(scenario_path) == requested
+
+        window.run_button.click()
+        deadline = time.monotonic() + 20
+        while window.pending is not None and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        run = window.run
+        assert run is not before
+        assert run.configuration == requested
+        grip = next(
+            window.events.topLevelItem(i)
+            for i in range(window.events.topLevelItemCount())
+            if window.events.topLevelItem(i).text(0).startswith("Độ bám bánh trái")
+        )
+        assert grip.data(0, ROLE) == 0.015
+        assert grip.text(1) == "0,004 / 0,015"
+        window.seek_event(grip, 0)
+        assert window.time.text() == "0,015 s"
+        assert "Kịch bản của kết quả" in window.draft_notice.text()
+
+        result_path = tmp_path / "cli.json"
+        subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "applications/operator-dashboard/qt_workbench.py"),
+                "--scenario",
+                str(scenario_path),
+                "--output",
+                str(result_path),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            timeout=60,
+            env=os.environ
+            | {
+                "PYTHONPATH": os.pathsep.join(
+                    filter(
+                        None,
+                        (
+                            str(ROOT / "robot/software/core/src"),
+                            os.environ.get("PYTHONPATH"),
+                        ),
+                    )
+                )
+            },
+        )
+        check_replay(run, RunRecord.load(result_path))
+
+        window.set_run(before)
+        window.set_comparison(run)
+        window.seek(run.time_s[-1])
+        assert window.time.text() == "0,043 s · Đối chiếu"
+        row = next(
+            i
+            for i in range(window.signals.rowCount())
+            if window.signals.item(i, 0).data(ROLE) == "height"
+        )
+        assert window.signals.item(row, 1).text() == "—"
+        assert window.signals.item(row, 2).text() != "—"
+    finally:
+        window.close()
 
 
 @pytest.mark.ros

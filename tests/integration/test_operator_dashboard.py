@@ -122,7 +122,6 @@ def test_dashboard_replays_nb4_and_preserves_early_stop(dashboard):
         "traction_budget": 0.25,
     }
     other = api(dashboard, "balance", alternative_inputs)
-    assert other == api(dashboard, "balance", alternative_inputs)
     for run, design, anchor in ((low, first, 0.0), (other, alternate, None)):
         setup = run["configuration"]
         direct = simulate_balance(

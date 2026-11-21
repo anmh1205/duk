@@ -102,7 +102,7 @@ OPTIONS = {
         "gated": "Ước lượng phát hiện trượt",
     },
     "fault": {
-        "none": "Không",
+        "none": "Không lỗi",
         "sensor": "Mất cảm biến",
         "deadline": "Bộ giải trễ",
         "infeasible": "Bài toán vô nghiệm",
@@ -230,6 +230,8 @@ SIGNAL_LABELS = {
 }
 STATE_LABELS = {
     "completed": "Hết thời lượng",
+    "paused": "Tạm dừng tính",
+    "cancelled": "Đã hủy giữa ca",
     "touchdown": "Chạm đất",
     "rolling_limit": "Mất điều kiện lăn",
     "hip_travel": "Vượt hành trình hông",
@@ -348,6 +350,22 @@ DESCRIPTION_LABELS = {
     "φR CCW [rad]": "φ phải ngược chiều kim đồng hồ [rad]",
     "spiṅL [rad/s]": "Tốc độ quay bánh trái [rad/s]",
     "spiṅR [rad/s]": "Tốc độ quay bánh phải [rad/s]",
+}
+
+
+SCHEDULE_LABELS = {
+    "drive_speed_m_s": "Vận tốc tiến (m/s)",
+    "turn_rate_rad_s": "Tốc độ quay (rad/s)",
+    "height_offset_m": "Độ lệch cao độ đặt (m)",
+    "friction_left": "Độ bám bánh trái",
+    "friction_right": "Độ bám bánh phải",
+    "velocity_impulse_m_s": "Đổi vận tốc x/y/z (m/s)",
+    "angular_velocity_impulse_rad_s": "Đổi vận tốc góc x/y/z (rad/s)",
+    "fault": "Lỗi giả lập",
+    "bounce": "Tác vụ độ cao / nhún",
+    "level_hold": "Cân bằng ngang",
+    "anchor": "Neo vị trí",
+    "heading_hold": "Giữ hướng",
 }
 
 

@@ -14,12 +14,15 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import FuncFormatter
 from python_qt_binding import QtCore, QtWidgets
 
-from .inputs import INTEGER_SCENARIO_FIELDS, Inputs, merged
+from .inputs import INTEGER_SCENARIO_FIELDS, NB6_LEGACY_TIMED_FIELDS, Inputs, merged
 from .kinematics import POINTS, SEGMENTS
+from .qt_schedule import ScheduleDialog, editor_text
 from .records import RunRecord, decimal, finite_number, save_json
 from .session import CONTROLLER_LABELS, CONTROLLERS, STUDIES, Workbench
+from .spatial import SpatialRun
 from .ui_text import (
     OPTIONS,
+    SCHEDULE_LABELS,
     case_label,
     configuration_value,
     field_label,
@@ -81,6 +84,8 @@ def details_tree(tree: W.QTreeWidget, data: dict) -> None:
 class ScenarioForm(W.QWidget):
     """A generated form backed by the exact accepted scenario keys."""
 
+    edited = QtCore.Signal()
+
     def __init__(self, session: Workbench, initial: dict) -> None:
         super().__init__()
         self.session = session
@@ -93,6 +98,11 @@ class ScenarioForm(W.QWidget):
         self.case = W.QComboBox()
         stack.addWidget(self.study)
         stack.addWidget(self.case)
+        self.schedule_mode = W.QCheckBox("Dùng lịch tùy chỉnh NB6")
+        self.schedule_mode.toggled.connect(self.toggle_schedule)
+        self.schedule_button = button("Lịch sự kiện…", self.edit_schedule)
+        stack.addWidget(self.schedule_mode)
+        stack.addWidget(self.schedule_button)
         self.scroll = W.QScrollArea()
         self.scroll.setWidgetResizable(True)
         stack.addWidget(self.scroll, 1)
@@ -111,6 +121,10 @@ class ScenarioForm(W.QWidget):
         defaults = self.session.defaults(study, options.get("case"))
         configuration = merged(defaults, options)
         if study == "NB6":
+            if configuration["schedule"] is not None:
+                configuration = self.session.inputs.whole_body_configuration(
+                    configuration
+                )
             for name in ("friction", "friction_after"):
                 if type(configuration[name]) in (int, float):
                     configuration[name] = [configuration[name]] * 2
@@ -179,7 +193,7 @@ class ScenarioForm(W.QWidget):
         layout.setFieldGrowthPolicy(W.QFormLayout.AllNonFixedFieldsGrow)
         self.scroll.setWidget(body)
         for name, value in configuration.items():
-            if name in ("study", "case"):
+            if name in ("study", "case", "schedule"):
                 continue
             default = defaults[name]
             if name in OPTIONS:
@@ -190,7 +204,7 @@ class ScenarioForm(W.QWidget):
                 widget.setChecked(value)
             else:
                 widget = W.QLineEdit()
-                widget.setText(self.editor_text(value))
+                widget.setText(editor_text(value))
                 if isinstance(default, list):
                     widget.setToolTip("Các thành phần cách nhau bằng dấu /.")
                 if default is None:
@@ -207,9 +221,49 @@ class ScenarioForm(W.QWidget):
                 title += " · trái / phải"
             layout.addRow(title, widget)
             self.editor[name] = (widget, default)
+            if isinstance(widget, W.QComboBox):
+                changed = widget.currentIndexChanged
+            elif isinstance(widget, W.QCheckBox):
+                changed = widget.toggled
+            else:
+                changed = widget.textChanged
+            changed.connect(lambda *_args: self.edited.emit())
         if configuration["study"] == "NB1–2":
             self.editor["mode"][0].currentIndexChanged.connect(self.kinematic_fields)
             self.kinematic_fields()
+        scheduled = configuration.get("schedule")
+        self.schedule = scheduled if scheduled is not None else []
+        self.schedule_mode.blockSignals(True)
+        self.schedule_mode.setChecked(scheduled is not None)
+        self.schedule_mode.blockSignals(False)
+        self.toggle_schedule()
+
+    def toggle_schedule(self) -> None:
+        nb6 = self.study.currentData() == "NB6"
+        self.schedule_mode.setVisible(nb6)
+        self.schedule_button.setVisible(nb6)
+        enabled = self.schedule_mode.isChecked()
+        self.schedule_button.setText(
+            f"Sửa lịch · {len(self.schedule)} mốc…" if enabled else "Lịch sự kiện…"
+        )
+        if nb6:
+            layout = self.scroll.widget().layout()
+            for name in NB6_LEGACY_TIMED_FIELDS:
+                widget = self.editor[name][0]
+                widget.setVisible(not enabled)
+                layout.labelForField(widget).setVisible(not enabled)
+        self.edited.emit()
+
+    def edit_schedule(self) -> None:
+        dialog = ScheduleDialog(
+            self,
+            self.schedule,
+            lambda entries: self.configuration(schedule_override=entries),
+        )
+        if dialog.exec_():
+            self.schedule = dialog.entries
+            self.schedule_mode.setChecked(True)
+            self.toggle_schedule()
 
     def kinematic_fields(self) -> None:
         mode = self.editor["mode"][0].currentData()
@@ -227,21 +281,17 @@ class ScenarioForm(W.QWidget):
             else "Vận tốc hông trái / phải."
         )
 
-    @staticmethod
-    def editor_text(value):
-        if value is None:
-            return ""
-        if isinstance(value, (list, tuple)):
-            return " / ".join(ScenarioForm.editor_text(v) for v in value)
-        if type(value) is float:
-            return np.format_float_positional(value, trim="-").replace(".", ",")
-        return str(value)
-
-    def configuration(self) -> dict:
+    def configuration(self, *, schedule_override=None) -> dict:
         selection = {"study": self.study.currentData()}
         if self.case.count():
             selection["case"] = self.case.currentData()
+        if schedule_override is not None:
+            selection["schedule"] = schedule_override
+        elif self.schedule_mode.isChecked():
+            selection["schedule"] = self.schedule
         for name, (widget, default) in self.editor.items():
+            if "schedule" in selection and name in NB6_LEGACY_TIMED_FIELDS:
+                continue
             if isinstance(widget, W.QCheckBox):
                 value = widget.isChecked()
             elif isinstance(widget, W.QComboBox):
@@ -266,6 +316,8 @@ class ScenarioForm(W.QWidget):
                         f"Giá trị không hợp lệ cho {field_label(name)}."
                     ) from exc
             selection[name] = value
+        if selection["study"] == "NB6":
+            return self.session.inputs.whole_body_configuration(selection)
         return selection
 
 
@@ -282,6 +334,10 @@ class WorkbenchWindow(W.QMainWindow):
         self.session = session
         self.run: RunRecord | None = None
         self.comparison: RunRecord | None = None
+        self.timeline: list[float] = []
+        self.interactive: SpatialRun | None = None
+        self.continuous = False
+        self.cancel_requested = False
         self.viewer = None
         self.worker = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="duk-simulation"
@@ -305,7 +361,8 @@ class WorkbenchWindow(W.QMainWindow):
             session.inputs.parameter_info["profile_name"] + " · Tham số tổng hợp"
         )
         header.addWidget(self.profile)
-        header.addWidget(button("Chạy với bộ tham số…", self.open_profile))
+        self.profile_button = button("Chạy với bộ tham số…", self.open_profile)
+        header.addWidget(self.profile_button)
         header.addStretch()
         self.viewer_button = button("Mở RViz", self.open_viewer)
         header.addWidget(self.viewer_button)
@@ -316,13 +373,31 @@ class WorkbenchWindow(W.QMainWindow):
         tools = W.QVBoxLayout(left)
         self.scenario = ScenarioForm(session, configuration)
         tools.addWidget(self.scenario, 1)
+        self.draft_notice = W.QLabel("Cấu hình chờ chạy")
+        self.draft_notice.setWordWrap(True)
+        tools.addWidget(self.draft_notice)
+        self.scenario.edited.connect(self.mark_draft)
+        self.new_button = button("Kịch bản mới", self.new_scenario)
+        tools.addWidget(self.new_button)
         self.run_button = button("Chạy mô phỏng", self.run_form)
         self.run_button.setObjectName("run")
         self.run_button.setStyleSheet(
             "background:#176d66;color:white;font-weight:600;padding:9px"
         )
         tools.addWidget(self.run_button)
-        tools.addWidget(button("Nạp kịch bản JSON…", self.open_scenario))
+        self.prepare_button = button("Chạy từng bước NB6", self.prepare_interactive)
+        tools.addWidget(self.prepare_button)
+        self.step_controls = W.QWidget()
+        step_row = W.QHBoxLayout(self.step_controls)
+        step_row.setContentsMargins(0, 0, 0, 0)
+        self.step_button = button("Tính 1 bước", self.advance_interactive)
+        self.continue_button = button("Chạy tiếp", self.toggle_interactive)
+        self.cancel_button = button("Hủy ca", self.cancel_interactive)
+        for control in (self.step_button, self.continue_button, self.cancel_button):
+            step_row.addWidget(control)
+        tools.addWidget(self.step_controls)
+        self.open_scenario_button = button("Nạp kịch bản JSON…", self.open_scenario)
+        tools.addWidget(self.open_scenario_button)
         tools.addWidget(button("Lưu kịch bản JSON…", self.save_scenario))
         columns.addWidget(left)
 
@@ -341,6 +416,7 @@ class WorkbenchWindow(W.QMainWindow):
         self.signal.currentIndexChanged.connect(self.draw_plot)
         toolbar.addWidget(self.signal, 1)
         self.compare_button = button("So sánh điều khiển…", self.compare_controller)
+        self.compare_button.setEnabled(False)
         toolbar.addWidget(self.compare_button)
         content.addLayout(toolbar)
 
@@ -370,6 +446,8 @@ class WorkbenchWindow(W.QMainWindow):
         content.addWidget(self.wheel_readouts)
         player = W.QHBoxLayout()
         self.play_button = button("Phát", self.toggle_play)
+        self.play_button.setToolTip("Phát lại dữ liệu đã tính.")
+        self.play_button.setEnabled(False)
         player.addWidget(self.play_button)
         self.slider = W.QSlider(QtCore.Qt.Horizontal)
         self.slider.setObjectName("time_slider")
@@ -381,14 +459,21 @@ class WorkbenchWindow(W.QMainWindow):
         player.addWidget(self.time)
         content.addLayout(player)
         files = W.QHBoxLayout()
-        for title, action in (
-            ("Mở kết quả…", self.open_run),
-            ("Lưu kết quả…", self.save_run),
-            ("Xuất CSV…", self.export_csv),
-            ("Đối chiếu tệp…", self.open_comparison),
-            ("Chạy lại và kiểm tra", self.verify),
-        ):
-            files.addWidget(button(title, action))
+        results = W.QToolButton()
+        results.setText("Tệp kết quả")
+        results.setPopupMode(W.QToolButton.InstantPopup)
+        menu = W.QMenu(results)
+        self.open_result_action = menu.addAction("Mở kết quả…", self.open_run)
+        self.save_result_action = menu.addAction("Lưu kết quả…", self.save_run)
+        self.export_result_action = menu.addAction("Xuất CSV…", self.export_csv)
+        self.compare_result_action = menu.addAction(
+            "Đối chiếu tệp…", self.open_comparison
+        )
+        self.verify_result_action = menu.addAction("Chạy lại và kiểm tra", self.verify)
+        menu.aboutToShow.connect(self.update_result_actions)
+        results.setMenu(menu)
+        files.addWidget(results)
+        files.addStretch()
         content.addLayout(files)
         columns.addWidget(middle)
 
@@ -446,6 +531,8 @@ class WorkbenchWindow(W.QMainWindow):
         self.work_timer.setInterval(30)
         self.work_timer.timeout.connect(self.finish_work)
         self.work_timer.start()
+        self.scenario.study.currentIndexChanged.connect(self.update_run_controls)
+        self.update_run_controls()
         if rviz:
             QtCore.QTimer.singleShot(0, self.open_viewer)
         if saved:
@@ -482,22 +569,22 @@ class WorkbenchWindow(W.QMainWindow):
     def scope(self) -> str:
         return self.objects.currentItem().data(0, ROLE)
 
-    def submit(self, operation, callback) -> None:
-        if self.pending is not None:
+    def submit(self, operation, callback, *, interactive: bool = False) -> None:
+        if self.pending is not None or (self.interactive and not interactive):
             return
         self.pause()
         self.finished = callback
+        self.pending_interactive = interactive
         self.pending = self.worker.submit(operation)
-        self.scenario.setEnabled(False)
-        self.run_button.setEnabled(False)
-        self.status.setText("Đang tính toán…")
+        self.update_run_controls()
+        if not interactive:
+            self.status.setText("Đang tính toán…")
 
     def finish_work(self) -> None:
         if self.pending is None or not self.pending.done():
             return
         future, self.pending = self.pending, None
-        self.scenario.setEnabled(True)
-        self.run_button.setEnabled(True)
+        interactive = self.pending_interactive
         try:
             self.finished(future.result())
         except (
@@ -508,8 +595,161 @@ class WorkbenchWindow(W.QMainWindow):
             TypeError,
             IndexError,
         ) as exc:
+            if interactive:
+                self.clear_interactive()
             self.status.setText(str(exc))
             W.QMessageBox.warning(self, "Bàn thử mô phỏng", str(exc))
+        finally:
+            self.update_run_controls()
+
+    def update_run_controls(self, *_args) -> None:
+        active = self.interactive is not None
+        idle = self.pending is None
+        editable = idle and not active
+        for control in (
+            self.scenario,
+            self.new_button,
+            self.run_button,
+            self.profile_button,
+            self.open_scenario_button,
+            self.prepare_button,
+        ):
+            control.setEnabled(editable)
+        self.compare_button.setEnabled(
+            editable and self.run is not None and self.run.study in CONTROLLERS
+        )
+        self.prepare_button.setVisible(
+            not active and self.scenario.study.currentData() == "NB6"
+        )
+        self.step_controls.setVisible(active)
+        can_step = active and idle and not self.continuous and not self.cancel_requested
+        self.step_button.setEnabled(can_step)
+        self.continue_button.setEnabled(
+            can_step or (self.continuous and not self.cancel_requested)
+        )
+        self.continue_button.setText(
+            "Tạm dừng tính" if self.continuous else "Chạy tiếp"
+        )
+        self.cancel_button.setEnabled(active and not self.cancel_requested)
+
+    def prepare_interactive(self) -> None:
+        try:
+            options = self.scenario.configuration()
+        except ValueError as exc:
+            self.status.setText(str(exc))
+            return
+        self.status.setText("Đang chuẩn bị ca NB6…")
+        self.submit(
+            partial(self.session.begin_nb6, options),
+            self.interactive_ready,
+            interactive=True,
+        )
+
+    def interactive_ready(self, run: SpatialRun) -> None:
+        self.interactive = run
+        self.status.setText("NB6 · Sẵn sàng tính bước đầu ở 0 s")
+        self.draft_notice.setText(
+            "Kịch bản đã chốt · đang xem kết quả trước"
+            if self.run
+            else "Kịch bản đã chốt"
+        )
+
+    def advance_interactive(self) -> None:
+        if self.interactive is not None and self.pending is None:
+            action = "Đang tính" if self.continuous else "Đang tính một bước"
+            self.status.setText(
+                f"NB6 · {action} · {decimal(self.interactive.runner.time_s)} s"
+            )
+            self.submit(
+                self.interactive.runner.advance,
+                self.interactive_advanced,
+                interactive=True,
+            )
+
+    def toggle_interactive(self) -> None:
+        if self.continuous:
+            self.continuous = False
+            self.status.setText("Sẽ tạm dừng sau bước tính đang chạy…")
+        elif (
+            self.interactive is not None
+            and self.pending is None
+            and not self.cancel_requested
+        ):
+            self.continuous = True
+            self.advance_interactive()
+        self.update_run_controls()
+
+    def interactive_advanced(self, _time_s: float) -> None:
+        if (
+            self.interactive.runner.finished
+            or self.cancel_requested
+            or not self.continuous
+        ):
+            self.collect_interactive()
+            return
+        self.advance_interactive()
+
+    def collect_interactive(self) -> None:
+        self.submit(
+            partial(self.interactive.record, cancelled=self.cancel_requested),
+            self.show_interactive,
+            interactive=True,
+        )
+
+    def show_interactive(self, record: RunRecord) -> None:
+        if self.cancel_requested and record.stop_reason == "paused":
+            self.collect_interactive()
+            return
+        if record.stop_reason != "paused":
+            self.clear_interactive()
+        self.set_run(record, follow_end=True)
+        if record.stop_reason == "paused":
+            self.draft_notice.setText("Ca NB6 tạm dừng · có thể chạy tiếp")
+
+    def cancel_interactive(self) -> None:
+        if self.interactive is None:
+            return
+        self.continuous = False
+        self.cancel_requested = True
+        self.status.setText("Đang chốt ca tại biên bước tính…")
+        if self.pending is None:
+            if self.interactive.runner.has_samples:
+                self.collect_interactive()
+            else:
+                self.clear_interactive()
+                self.mark_draft()
+                self.status.setText("Đã hủy trước khi tính bước đầu.")
+        self.update_run_controls()
+
+    def clear_interactive(self) -> None:
+        self.interactive = None
+        self.continuous = False
+        self.cancel_requested = False
+
+    def mark_draft(self) -> None:
+        self.draft_notice.setText(
+            "Kịch bản chưa chạy · đang xem kết quả trước"
+            if self.run
+            else "Kịch bản chưa chạy"
+        )
+
+    def update_result_actions(self) -> None:
+        ready = self.pending is None and self.interactive is None
+        available = self.run is not None
+        self.open_result_action.setEnabled(ready)
+        self.save_result_action.setEnabled(available)
+        self.export_result_action.setEnabled(available)
+        self.compare_result_action.setEnabled(ready and available)
+        self.verify_result_action.setEnabled(
+            ready and available and self.run.stop_reason not in ("paused", "cancelled")
+        )
+
+    def new_scenario(self) -> None:
+        study = self.scenario.study.currentData()
+        configuration = self.session.defaults(study)
+        if study == "NB6":
+            configuration["schedule"] = []
+        self.scenario.set_configuration(configuration)
 
     def run_form(self) -> None:
         try:
@@ -519,10 +759,11 @@ class WorkbenchWindow(W.QMainWindow):
             return
         self.submit(partial(self.session.run, options), self.set_run)
 
-    def set_run(self, run: RunRecord) -> None:
+    def set_run(self, run: RunRecord, *, follow_end: bool = False) -> None:
         self.pause()
         self.scenario.set_configuration(run.configuration)
         self.run, self.comparison = run, None
+        self.draft_notice.setText("Kịch bản của kết quả đang xem")
         self.wheel_readouts.setVisible(
             any(
                 name in run.signals
@@ -530,11 +771,8 @@ class WorkbenchWindow(W.QMainWindow):
             )
         )
         self.signals.setColumnHidden(2, True)
-        self.slider.blockSignals(True)
-        self.slider.setRange(0, len(run.time_s) - 1)
-        self.slider.setValue(0)
-        self.slider.blockSignals(False)
-        self.compare_button.setEnabled(run.study in CONTROLLERS)
+        self.set_timeline(run.time_s[-1] if follow_end else run.time_s[0])
+        self.update_run_controls()
         details_tree(
             self.parameters,
             {
@@ -555,10 +793,19 @@ class WorkbenchWindow(W.QMainWindow):
                 item["actual_s"] if item["actual_s"] is not None else float("inf")
             ),
         ):
+            name = event["name"]
+            channel = name.removeprefix("schedule.")
+            if name.startswith("schedule.") and channel in SCHEDULE_LABELS:
+                value = event.get("value")
+                if channel == "fault" and isinstance(value, str):
+                    value = OPTIONS["fault"].get(value, value)
+                elif type(value) is bool:
+                    value = "Bật" if value else "Tắt"
+                name = f"{SCHEDULE_LABELS[channel]} · {shown(value)}"
             item = W.QTreeWidgetItem(
                 self.events,
                 [
-                    shown(event["name"]),
+                    shown(name),
                     f"{decimal(event['requested_s'])} / {decimal(event['actual_s'])}",
                 ],
             )
@@ -569,6 +816,30 @@ class WorkbenchWindow(W.QMainWindow):
             status += " · Cần bộ tham số gốc để xem RViz và phương trình"
         self.status.setText(status)
         self.object_changed()
+
+    def set_timeline(self, keep: float) -> None:
+        self.timeline = self.run.time_s
+        if self.comparison:
+            self.timeline = sorted(set(self.timeline).union(self.comparison.time_s))
+        self.slider.blockSignals(True)
+        self.slider.setRange(0, len(self.timeline) - 1)
+        self.seek(keep)
+        self.slider.blockSignals(False)
+        self.play_button.setEnabled(len(self.timeline) > 1)
+
+    @staticmethod
+    def index_at(run: RunRecord, time: float) -> int | None:
+        if run.time_s[0] <= time <= run.time_s[-1]:
+            return bisect.bisect_right(run.time_s, time) - 1
+        return None
+
+    def displayed_sample(self, time: float) -> tuple[RunRecord | None, int | None]:
+        for run in (self.run, self.comparison):
+            if run is not None:
+                index = self.index_at(run, time)
+                if index is not None:
+                    return run, index
+        return None, None
 
     @staticmethod
     def run_label(run: RunRecord) -> str:
@@ -697,47 +968,54 @@ class WorkbenchWindow(W.QMainWindow):
         self.axes.grid(alpha=0.20)
         if self.axes.get_legend_handles_labels()[0]:
             self.axes.legend(loc="best", fontsize="small")
-        for e in self.run.events:
-            if e["actual_s"] is not None:
-                self.axes.axvline(
-                    e["actual_s"], color="#9aabb0", linewidth=0.7, alpha=0.5
-                )
+        for index, run in enumerate((self.run, self.comparison)):
+            if run is not None:
+                for e in run.events:
+                    if e["actual_s"] is not None:
+                        self.axes.axvline(
+                            e["actual_s"], color=COLOR[index], linewidth=0.7, alpha=0.25
+                        )
         self.cursor = self.axes.axvline(
-            self.run.time_s[self.slider.value()], linewidth=1.15, color="#273a42"
+            self.timeline[self.slider.value()], linewidth=1.15, color="#273a42"
         )
         self.canvas.draw_idle()
 
     def update_cursor(self, *_args) -> None:
         if self.run is None:
             return
-        index = self.slider.value()
-        time = self.run.time_s[index]
-        self.time.setText(f"{decimal(time)} s")
+        time = self.timeline[self.slider.value()]
+        run, index = self.displayed_sample(time)
+        suffix = " · Đối chiếu" if run is not None and run is self.comparison else ""
+        self.time.setText(f"{decimal(time)} s{suffix}")
         if not self.wheel_readouts.isHidden():
             for side, values in self.wheel_columns.items():
-                values.setText("\n".join(wheel_readout(self.run, index, side)))
+                values.setText(
+                    "\n".join(wheel_readout(run, index, side)) if run else "—"
+                )
         if hasattr(self, "cursor"):
             self.cursor.set_xdata([time, time])
             self.canvas.draw_idle()
         if self.tabs.currentWidget() == self.equations:
             try:
-                data = self.session.equations(self.run, index, self.scope)
+                data = (
+                    self.session.equations(run, index, self.scope)
+                    if run
+                    else {"Mẫu": "Không có dữ liệu tại mốc này."}
+                )
             except (ValueError, KeyError, TypeError, IndexError) as exc:
                 data = {"Mẫu": str(exc)}
             details_tree(self.equations, data)
         if self.tabs.currentWidget() == self.signals:
-            self.update_signals(index)
+            self.update_signals(time)
         self.publish_frame()
 
-    def update_signals(self, index: int) -> None:
+    def update_signals(self, time: float) -> None:
         values = self.scoped_signals(self.run)
         self.signals.setRowCount(len(values))
-        compare_index = None
-        if self.comparison:
-            time = self.run.time_s[index]
-            comparison_time = self.comparison.time_s
-            if comparison_time[0] <= time <= comparison_time[-1]:
-                compare_index = bisect.bisect_right(comparison_time, time) - 1
+        index = self.index_at(self.run, time)
+        compare_index = (
+            self.index_at(self.comparison, time) if self.comparison else None
+        )
         for row, (name, value) in enumerate(values.items()):
             unit = unit_label(value.unit)
             title = W.QTableWidgetItem(
@@ -749,7 +1027,9 @@ class WorkbenchWindow(W.QMainWindow):
             else:
                 title.setToolTip(title.text())
             self.signals.setItem(row, 0, title)
-            sample = W.QTableWidgetItem(shown(value.values[index]))
+            sample = W.QTableWidgetItem(
+                shown(value.values[index] if index is not None else None)
+            )
             sample.setToolTip(sample.text())
             self.signals.setItem(row, 1, sample)
             if self.comparison:
@@ -782,9 +1062,15 @@ class WorkbenchWindow(W.QMainWindow):
     def publish_frame(self) -> None:
         if not self.viewer:
             return
-        run = self.run if self.run and self.session.matches_profile(self.run) else None
+        run, index = (
+            self.displayed_sample(self.timeline[self.slider.value()])
+            if self.timeline
+            else (None, None)
+        )
+        if run is not None and not self.session.matches_profile(run):
+            run = None
         try:
-            complete = self.viewer.send(run, self.slider.value())
+            complete = self.viewer.send(run, 0 if index is None else index)
             self.viewer_button.setText(
                 "RViz đã kết nối" if complete else "RViz · tư thế chưa khả dụng"
             )
@@ -796,8 +1082,8 @@ class WorkbenchWindow(W.QMainWindow):
             self.viewer_button.setToolTip(str(exc))
 
     def seek(self, time: float) -> None:
-        if self.run:
-            self.slider.setValue(max(0, bisect.bisect_right(self.run.time_s, time) - 1))
+        if self.timeline:
+            self.slider.setValue(max(0, bisect.bisect_right(self.timeline, time) - 1))
 
     def plot_seek(self, event) -> None:
         if event.inaxes == self.axes and event.xdata is not None:
@@ -820,10 +1106,10 @@ class WorkbenchWindow(W.QMainWindow):
     def toggle_play(self) -> None:
         if self.play_timer.isActive():
             self.pause()
-        elif self.run and len(self.run.time_s) > 1:
+        elif len(self.timeline) > 1:
             if self.slider.value() == self.slider.maximum():
                 self.slider.setValue(0)
-            self.play_start = monotonic() - self.run.time_s[self.slider.value()]
+            self.play_start = monotonic() - self.timeline[self.slider.value()]
             self.play_button.setText("Tạm dừng")
             self.play_timer.start()
 
@@ -866,7 +1152,10 @@ class WorkbenchWindow(W.QMainWindow):
     def set_comparison(self, run: RunRecord) -> None:
         if not self.run or self.run.study != run.study:
             raise ValueError("Chọn kết quả từ cùng mô hình để so sánh.")
+        self.pause()
+        current_time = self.timeline[self.slider.value()]
         self.comparison = run
+        self.set_timeline(current_time)
         self.signals.setColumnHidden(2, False)
         self.status.setText(
             f"{self.run_label(self.run)} · {shown(self.run.stop_reason)} ({decimal(self.run.time_s[-1])} s)"
@@ -887,7 +1176,7 @@ class WorkbenchWindow(W.QMainWindow):
         )
 
     def read_file(self, title, callback) -> None:
-        if self.pending is not None:
+        if self.pending is not None or self.interactive is not None:
             return
         path, _ = W.QFileDialog.getOpenFileName(self, title, "", "JSON (*.json)")
         if path:

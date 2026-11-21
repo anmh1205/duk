@@ -17,7 +17,7 @@ from .kinematics import (
 )
 from .records import REPLAY_TOLERANCE, RunRecord, plain
 from .sagittal import HEIGHT_POLICIES, PLANAR_PRESETS, SagittalStudies, planar_equations
-from .spatial import spatial_equations, spatial_record
+from .spatial import SpatialRun, spatial_equations, spatial_record
 
 STUDIES = {
     "NB6": "NB6 · Toàn thân không gian",
@@ -76,6 +76,12 @@ class Workbench:
             return kinematic_record(self.inputs, options)
         return self.sagittal.run(study, options)
 
+    def begin_nb6(self, options: dict) -> SpatialRun:
+        """Prepare NB6 without advancing its simulation clock."""
+        if options.get("study") != "NB6":
+            raise ValueError("Chế độ chạy từng bước hiện hỗ trợ NB6.")
+        return SpatialRun(self.inputs, options)
+
     def matches_profile(self, run: RunRecord) -> bool:
         return all(
             run.provenance.get(key) == self.inputs.parameter_info[key]
@@ -83,6 +89,11 @@ class Workbench:
         )
 
     def verify_replay(self, original: RunRecord) -> RunRecord:
+        if original.stop_reason in ("paused", "cancelled"):
+            raise ValueError(
+                "Bản ghi dừng giữa ca chỉ dùng để phát lại. "
+                "Chọn kịch bản để chạy đủ thời lượng."
+            )
         if not self.matches_profile(original):
             raise ValueError("Select the original geometry and parameter profile first")
         if original.provenance.get("code") != self.inputs.provenance()["code"]:
