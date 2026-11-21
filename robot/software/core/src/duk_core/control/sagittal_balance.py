@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 from ..modeling.wheeled_pendulum import WheeledPendulum
+from .lqr import LQRDesign, bryson_weights, discrete_lqr
 
 
 @dataclass(frozen=True)
@@ -14,6 +16,25 @@ class TorqueDecision:
     requested: float
     applied: float | None
     reason: str
+
+
+def design_fixed_hip_lqr(
+    model: WheeledPendulum,
+    period: float,
+    state_scales: ArrayLike,
+    torque_scale: float,
+) -> tuple[LQRDesign, LQRDesign]:
+    """Design position-hold and balance-only LQR for the same upright model.
+
+    State scales follow axle position [m], speed [m/s], lean [rad], and lean
+    rate [rad/s]. Balance-only drops the position state and its cost.
+    """
+    a, b = model.linearization()
+    q, r = bryson_weights(state_scales, torque_scale)
+    return (
+        discrete_lqr(a, b, q, r, period),
+        discrete_lqr(a[1:, 1:], b[1:], q[1:, 1:], r, period),
+    )
 
 
 def traction_interval(

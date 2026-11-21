@@ -1,0 +1,14 @@
+{
+  "dry": {
+    "friction": 0.8,
+    "traction_budget": null
+  },
+  "low_grip": {
+    "friction": 0.3,
+    "traction_budget": null
+  },
+  "low_grip_limited": {
+    "friction": 0.3,
+    "traction_budget": 0.25
+  }
+}

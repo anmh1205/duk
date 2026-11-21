@@ -1,0 +1,11 @@
+{
+  "study": "NB6",
+  "case": "left_grip",
+  "controller": "weighted",
+  "priority": "balance_first",
+  "friction": [0.65, 0.65],
+  "friction_after": [0.13, 0.65],
+  "friction_change_s": 0.36,
+  "impulse_at_s": 0.39,
+  "velocity_impulse_m_s": [0.19, 0.03, 0.0]
+}

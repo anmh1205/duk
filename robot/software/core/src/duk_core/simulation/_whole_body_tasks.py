@@ -50,8 +50,10 @@ class ReferencePolicy:
         sensor_valid,
         fallen,
         previous_usage,
+        overrides=None,
     ) -> References:
         p, c, home, t = self.settings, self.scenario, self.home, time
+        overrides = overrides or {}
         period, yaw, modes = p["period_s"], terms.kinematics.tasks[3], observation.modes
         secondary_available = (
             all(mode == "rolling" for mode in modes)
@@ -59,10 +61,16 @@ class ReferencePolicy:
             and not fallen
             and supervisor_mode == "normal"
         )
-        bounce_on = c["feature_start_s"] <= t < c["bounce_off_s"]
-        level_on = c["level_hold"] and t >= c["feature_start_s"]
-        anchor_on = c["anchor"] and t >= c["feature_start_s"]
-        heading_on = c["heading_hold"] and t >= c["feature_start_s"]
+        bounce_on = overrides.get(
+            "bounce", c["feature_start_s"] <= t < c["bounce_off_s"]
+        )
+        level_on = overrides.get(
+            "level_hold", c["level_hold"] and t >= c["feature_start_s"]
+        )
+        anchor_on = overrides.get("anchor", c["anchor"] and t >= c["feature_start_s"])
+        heading_on = overrides.get(
+            "heading_hold", c["heading_hold"] and t >= c["feature_start_s"]
+        )
         if heading_on and self.heading_anchor is None:
             self.heading_anchor = yaw
         elif not heading_on:
@@ -95,14 +103,26 @@ class ReferencePolicy:
         ]
         phase = 2 * np.pi * c["bounce_hz"] * max(0.0, t - c["feature_start_s"])
         omega = 2 * np.pi * c["bounce_hz"]
-        wave = c["bounce_amplitude_m"] * np.sin(phase)
-        wave_rate = c["bounce_amplitude_m"] * omega * np.cos(phase)
+        oscillation = c["bounce_amplitude_m"] * np.sin(phase)
+        wave = (
+            overrides.get("height_offset_m", c.get("height_offset_m", 0.0))
+            + oscillation
+        )
+        wave_rate = (
+            c["bounce_amplitude_m"] * omega * np.cos(phase)
+            if t >= c["feature_start_s"]
+            else 0.0
+        )
         amount_rate = self.features[0].rate
         h_ref = home + amounts[0] * wave
         h_rate = amounts[0] * wave_rate + amount_rate * wave
-        h_acc = -amounts[0] * omega**2 * wave + 2 * amount_rate * wave_rate
-        requested_yaw_rate = c["turn_rate_rad_s"] if t < c["turn_end_s"] else 0.0
-        requested_speed = c["drive_speed_m_s"] if t < c["drive_end_s"] else 0.0
+        h_acc = -amounts[0] * omega**2 * oscillation + 2 * amount_rate * wave_rate
+        requested_yaw_rate = overrides.get(
+            "turn_rate_rad_s", c["turn_rate_rad_s"] if t < c["turn_end_s"] else 0.0
+        )
+        requested_speed = overrides.get(
+            "drive_speed_m_s", c["drive_speed_m_s"] if t < c["drive_end_s"] else 0.0
+        )
         speed_ref, yaw_rate_ref = (
             (requested_speed, requested_yaw_rate) if secondary_available else (0.0, 0.0)
         )

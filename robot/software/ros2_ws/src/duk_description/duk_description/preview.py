@@ -22,7 +22,7 @@ def numbers(values):
     return " ".join(f"{value:.12g}" for value in values)
 
 
-def build_preview(geometry_path, q_deg=75.0):
+def build_preview(geometry_path, q_deg=75.0, *, mounts_xyz_m=None):
     geometry = load_leg_geometry_json(geometry_path)
     pose = solve_leg_pose(geometry, math.radians(q_deg))
     mount_height = place_leg_on_ground(geometry, pose).body_height_mm / 1000
@@ -99,12 +99,17 @@ def build_preview(geometry_path, q_deg=75.0):
         (0.12, 0.75, 0.85, 1),
     )
     leg_points = {}
-    for side, y in (
-        ("left", LEG_PLANE_SPACING_M / 2),
-        ("right", -LEG_PLANE_SPACING_M / 2),
-    ):
+    mounts = (
+        mounts_xyz_m
+        if mounts_xyz_m is not None
+        else (
+            (0.0, LEG_PLANE_SPACING_M / 2, 0.0),
+            (0.0, -LEG_PLANE_SPACING_M / 2, 0.0),
+        )
+    )
+    for side, (mx, y, mz) in zip(("left", "right"), mounts):
         points = {
-            name: (pose.point(name)[0] / 1000, y, pose.point(name)[1] / 1000)
+            name: (mx + pose.point(name)[0] / 1000, y, mz + pose.point(name)[1] / 1000)
             for name in ("A", "B", "C", "D", "H", "O")
         }
         leg_points[side] = {
@@ -162,7 +167,8 @@ def build_preview(geometry_path, q_deg=75.0):
         "geometry_source": str(Path(geometry_path).resolve()),
         "q_deg": q_deg,
         "body_size_m": [0.20, 0.24, 0.14],
-        "leg_plane_spacing_m": LEG_PLANE_SPACING_M,
+        "leg_plane_spacing_m": mounts[0][1] - mounts[1][1],
+        "leg_mounts_xyz_m": mounts,
         "wheel_width_m": WHEEL_WIDTH_M,
         "points_world_m": leg_points,
         "wheel_radius_m": geometry.wheel_radius_mm / 1000,

@@ -28,6 +28,7 @@ class Allocation:
     solution: np.ndarray | None
     residual: float
     compute_seconds: float
+    active_constraints: tuple[str, ...] = ()
 
     @property
     def effort(self):
@@ -307,6 +308,47 @@ def allocate(
         if index + 1 < len(groups):
             eq = np.vstack((eq, task_matrix))
             rhs = np.r_[rhs, task_matrix @ guess]
+    labels = (
+        "ax",
+        "ay",
+        "az",
+        "angular_ax",
+        "angular_ay",
+        "angular_az",
+        "hip_L_accel",
+        "hip_R_accel",
+        "spin_L_accel",
+        "spin_R_accel",
+        "hip_L_effort",
+        "hip_R_effort",
+        "wheel_L_effort",
+        "wheel_R_effort",
+        "L_force_x",
+        "L_force_y",
+        "L_force_z",
+        "R_force_x",
+        "R_force_y",
+        "R_force_z",
+    )
+    active = [
+        f"{name}:{side}"
+        for side, bounds in (("lower", lower), ("upper", upper))
+        for name, value, bound in zip(labels, guess, bounds)
+        if abs(value - bound) <= 2e-6
+    ]
+    edges = [
+        f"{side}_friction_edge_{i + 1}"
+        for side, mode in zip(("L", "R"), modes)
+        if mode != "flight"
+        for i in range(4)
+    ]
+    active.extend(
+        name for name, margin in zip(edges, inequalities @ guess) if abs(margin) <= 2e-6
+    )
     return Allocation(
-        "solved", guess * scales, float(max_residual), perf_counter() - start
+        "solved",
+        guess * scales,
+        float(max_residual),
+        perf_counter() - start,
+        tuple(active),
     )

@@ -10,6 +10,9 @@ The [Python workflow](../../.github/workflows/python-core.yml) installs
 - Ruff lint/import rules and formatting for Python and notebook sources;
 - core unit tests, import-layer/cycle checks and dependency-free geometry imports;
 - ROS-independent URDF/SDF geometry adapters and developer-tool configuration tests;
+- local dashboard HTTP inputs, canonical poses, NB4 replay parity, and invalid combinations;
+- workbench NB6 per-wheel grip, direct core parity, supervisor faults, NB1–NB5
+  study coverage, and saved run round trips;
 - the standalone DUK leg-kinematics example;
 - symbolic geometry agreement, Lagrange identities, inverse kinematics and
   second-order derivatives; synthetic test parameters are not robot data;
@@ -124,3 +127,13 @@ are recorded separately in [Platform compatibility](../platforms/compatibility.m
 A green Python-core job does not prove the Docker image is valid. A green development-environment workflow establishes only the combinations explicitly exercised above.
 
 It does **not** establish NVIDIA GPU acceleration, Jetson/JetPack/L4T, simulation GUI forwarding, USB/serial/CAN passthrough, external ROS 2 DDS networking or physical-robot access. Those require separate runtime definitions and tests.
+
+The simulation workflow also drives the [Qt workbench](../../applications/operator-dashboard/README.md)
+from its Run button and time slider, then compares ROS marker origins and
+terminal wheel transforms with the saved workbench samples. Run it inside the
+Jazzy simulation image after sourcing ROS.
+
+```bash
+QT_QPA_PLATFORM=offscreen OPENBLAS_NUM_THREADS=1 \
+  python -m pytest -q -m ros tests/integration/test_simulation_workbench.py
+```

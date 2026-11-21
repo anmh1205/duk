@@ -6,7 +6,10 @@ on:
       - main
     paths:
       - "robot/config/physical/**"
+      - "robot/simulation/scenarios/**"
       - "research/experiments/duk-v3/**"
+      - "applications/operator-dashboard/**"
+      - "tests/integration/**"
       - "robot/software/core/**"
       - "robot/software/ros2_ws/src/**"
       - "tools/**"
@@ -16,7 +19,10 @@ on:
   pull_request:
     paths:
       - "robot/config/physical/**"
+      - "robot/simulation/scenarios/**"
       - "research/experiments/duk-v3/**"
+      - "applications/operator-dashboard/**"
+      - "tests/integration/**"
       - "robot/software/core/**"
       - "robot/software/ros2_ws/src/**"
       - "tools/**"
@@ -52,7 +58,7 @@ jobs:
         run: |
           ruff check .
           ruff format --check .
-      - name: Test core, geometry adapters and development tools
+      - name: Test core, dashboard, geometry adapters and development tools
         env:
           OPENBLAS_NUM_THREADS: "1"
         run: python -m pytest -q -m "not ros"

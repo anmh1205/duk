@@ -36,6 +36,16 @@ class HeightTrace:
     status: tuple[str, ...]
     terminal_time: float
     terminal_lean: float
+    terminal_state: np.ndarray
+    linear_a: np.ndarray
+    linear_b: np.ndarray
+    gain: np.ndarray
+    nominal_force_constraints: np.ndarray
+    normal_force: np.ndarray
+    tangent_force: np.ndarray
+    nominal_state: np.ndarray
+    torque_interval: np.ndarray
+    force_constraints: np.ndarray
 
 
 def _rolling_step(plant, trajectory, motor, friction, state, effort, start, end, first):
@@ -71,6 +81,7 @@ def compare_height_policies(
     r_weight: np.ndarray,
     initial_lean: float,
     horizon: int,
+    policies: tuple[str, ...] = ("fixed", "scheduled", "tv_lqr", "mpc"),
 ) -> dict[str, HeightTrace]:
     """Evaluate fixed, scheduled, TV-LQR and constrained MPC in a common plant.
 
@@ -84,6 +95,10 @@ def compare_height_policies(
         or horizon < 1
     ):
         raise ValueError("Invalid height study interval, limits or MPC horizon")
+    if not policies or any(
+        policy not in ("fixed", "scheduled", "tv_lqr", "mpc") for policy in policies
+    ):
+        raise ValueError("Select a supported height controller")
     times, ends = sample_intervals(duration, period)
     offset = model.equivalent_upper_body(trajectory.initial).angle_from_vertical_rad
     plant = PrescribedSagittal(model, offset)
@@ -178,15 +193,18 @@ def compare_height_policies(
     )
     traces = {}
 
-    for policy in ("fixed", "scheduled", "tv_lqr", "mpc"):
+    for policy in policies:
         state = np.array([0.0, 0.0, initial_lean, 0.0])
         rows, statuses = [], []
+        gains = []
+        intervals, constraint_values = [], []
         terminal_time = 0.0
         for index, (time, end, sample) in enumerate(zip(times, ends, samples)):
             deviation = state - sample.nominal
             start = perf_counter()
             status = "within_limits"
             if policy == "fixed":
+                gain = fixed
                 correction = -fixed @ deviation
             elif policy == "scheduled":
                 gain = np.array(
@@ -197,8 +215,10 @@ def compare_height_policies(
                 )
                 correction = -gain @ deviation
             elif policy == "tv_lqr":
+                gain = tv[index][0]
                 correction = -(tv[index] @ deviation)[0]
             else:
+                gain = np.full_like(fixed, np.nan)
                 correction = height_mpc_command(
                     samples[index : index + horizon],
                     deviation,
@@ -208,11 +228,13 @@ def compare_height_policies(
                     motor_bound,
                 )
                 if correction is None:
+                    gain = fixed
                     correction = -fixed @ deviation
                     status = "mpc_fallback"
             request = sample.nominal_effort + correction
             compute = perf_counter() - start
             interval, _, _ = bounds(state, sample.motion)
+            intervals.append((np.nan, np.nan) if interval is None else interval)
             effort = np.nan if interval is None else float(np.clip(request, *interval))
             if interval is None:
                 status = "infeasible"
@@ -237,6 +259,7 @@ def compare_height_policies(
             lean = state[2] - posture(sample.motion[0])
             lift = lift_at(plant, state, sample.motion)
             usage, hip_effort = np.nan, np.full(2, np.nan)
+            normal_force, tangent_force = np.nan, np.full(2, np.nan)
             if next_state is not None:
                 usage = (
                     2
@@ -244,6 +267,17 @@ def compare_height_policies(
                     / max(1e-12, friction * response.normal_force)
                 )
                 hip_effort = response.hip_effort
+                normal_force, tangent_force = (
+                    response.normal_force,
+                    response.tangent_force,
+                )
+            constraint_values.append(
+                height_force_constraints(
+                    response, motor.joint_limit(sample.motion[1]), friction
+                )
+                if next_state is not None
+                else np.full_like(sample.constraint_value, np.nan)
+            )
             rows.append(
                 (
                     time,
@@ -255,15 +289,33 @@ def compare_height_policies(
                     lean,
                     lift,
                     compute,
+                    normal_force,
+                    tangent_force,
                 )
             )
             statuses.append(status)
+            gains.append(gain)
             if next_state is None:
                 break
             state, terminal_time = next_state, end
         terminal_lean = state[2] - posture(trajectory.evaluate(terminal_time)[0])
+        *history, normal, tangent = map(np.asarray, zip(*rows))
+        used = samples[: len(rows)]
         traces[policy] = HeightTrace(
-            *map(np.asarray, zip(*rows)), tuple(statuses), terminal_time, terminal_lean
+            *history,
+            tuple(statuses),
+            terminal_time,
+            terminal_lean,
+            state,
+            np.array([sample.a for sample in used]),
+            np.array([sample.b for sample in used]),
+            np.array(gains),
+            np.array([sample.constraint_value for sample in used]),
+            normal,
+            tangent,
+            np.array([sample.nominal for sample in used]),
+            np.asarray(intervals),
+            np.asarray(constraint_values),
         )
     return traces
 
